@@ -1,0 +1,56 @@
+name: Check and package
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm install --global pnpm@10
+      - name: Check source setup
+        run: python start.py --check
+      - name: Test geometry and job recovery
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            .venv/Scripts/python.exe -m pytest -q
+          else
+            .venv/bin/python -m pytest -q
+          fi
+      - name: Check Windows launcher
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: start.bat --check
+      - name: Check Mac and Linux launcher
+        if: runner.os != 'Windows'
+        run: bash start.sh --check
+      - name: Package downloads
+        if: runner.os == 'Linux'
+        run: python scripts/build_release.py
+      - name: Save downloads
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Contour-Studio-downloads
+          path: releases/*.zip
+          if-no-files-found: error

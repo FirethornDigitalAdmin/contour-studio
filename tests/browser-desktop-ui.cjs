@@ -67,7 +67,7 @@ const output = process.env.UI_EVIDENCE_DIR || 'data/ui-review';
     await page.getByRole('dialog', { name: 'From map to mantelpiece.' }).waitFor();
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({ state: 'hidden' });
-    for (const size of [{width:1920,height:1080}, {width:1280,height:720}, {width:1024,height:576}, {width:900,height:650}, {width:390,height:844}]) {
+    for (const size of [{width:1920,height:1080}, {width:1280,height:720}, {width:1024,height:576}, {width:900,height:650}, {width:960,height:480}, {width:900,height:500}, {width:683,height:384}, {width:390,height:844}]) {
       await page.setViewportSize(size);
       await fits(`${size.width}×${size.height}`);
       await button('Review & make').click();

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from desktop import main as desktop
+import ctypes
 
 
 def runtime(monkeypatch, starts=True, busy=False):
@@ -33,6 +34,7 @@ def runtime(monkeypatch, starts=True, busy=False):
 def test_native_workspace_keeps_drafts_and_uses_webview2(monkeypatch, tmp_path):
     view, server, socket, stop_workers = runtime(monkeypatch)
     monkeypatch.setattr(sys, 'platform', 'win32')
+    monkeypatch.setattr(desktop, 'window_options', lambda: {'width': 1000, 'height': 650, 'min_size': (800, 480), 'maximized': True})
     desktop.run_application(tmp_path)
     assert view.create_window.call_args.args[1] == 'http://127.0.0.1:18767'
     assert view.start.call_args.kwargs == {
@@ -41,6 +43,17 @@ def test_native_workspace_keeps_drafts_and_uses_webview2(monkeypatch, tmp_path):
     assert server.should_exit
     stop_workers.assert_called_once()
     socket.close.assert_called_once()
+
+
+def test_scaled_windows_display_keeps_restored_window_on_screen(monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'win32')
+    user32 = SimpleNamespace(GetDpiForSystem=lambda: 192, GetSystemMetrics=lambda i: [1920, 1080][i])
+    monkeypatch.setattr(ctypes, 'windll', SimpleNamespace(user32=user32), raising=False)
+    options = desktop.window_options()
+    assert options['maximized']
+    assert options['width'] < 960 and options['height'] < 540
+    assert options['min_size'][0] <= options['width']
+    assert options['min_size'][1] <= options['height']
 
 
 def test_engine_start_failure_shows_recovery_and_releases_port(monkeypatch, tmp_path):

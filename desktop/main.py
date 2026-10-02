@@ -38,6 +38,21 @@ def native_error(message):
         print(message, file=sys.stderr)
 
 
+def window_options():
+    options = {'width': 1440, 'height': 960, 'min_size': (900, 650)}
+    if sys.platform == 'win32':
+        import ctypes
+        user32 = ctypes.windll.user32
+        scale = max(1, getattr(user32, 'GetDpiForSystem', lambda: 96)() / 96)
+        # Match the screen's logical size before pywebview applies its DPI scale.
+        # Leave space for window chrome and the taskbar when restoring the window.
+        width = min(1440, max(360, int(user32.GetSystemMetrics(0) / scale) - 40))
+        height = min(960, max(280, int(user32.GetSystemMetrics(1) / scale) - 80))
+        options = {'width': width, 'height': height,
+                   'min_size': (min(800, width), min(480, height)), 'maximized': True}
+    return options
+
+
 def run_application(data_root):
     import uvicorn
     import webview
@@ -73,9 +88,8 @@ def run_application(data_root):
             return
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.settings['OPEN_EXTERNAL_LINKS_IN_BROWSER'] = True
-        webview.create_window('Contour Studio', f'http://127.0.0.1:{port}', width=1440, height=960,
-                              min_size=(900, 650), background_color='#fcfbf7', confirm_close=False,
-                              text_select=True)
+        webview.create_window('Contour Studio', f'http://127.0.0.1:{port}', **window_options(),
+                              background_color='#fcfbf7', confirm_close=False, text_select=True)
         webview.start(private_mode=False, storage_path=str(data_root / 'browser'), **browser_options)
     finally:
         from backend.worker import stop_workers

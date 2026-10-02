@@ -1,0 +1,81 @@
+name: Build desktop installers
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Installer to build and test
+        type: choice
+        default: Windows x64
+        options:
+          - Windows x64
+          - macOS Apple Silicon
+          - macOS Intel
+          - All platforms
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.target == 'Windows x64' && '[{"os":"windows-latest","label":"Windows-x64"}]' || inputs.target == 'macOS Apple Silicon' && '[{"os":"macos-15","label":"macOS-Apple-Silicon"}]' || inputs.target == 'macOS Intel' && '[{"os":"macos-15-intel","label":"macOS-Intel"}]' || '[{"os":"macos-15","label":"macOS-Apple-Silicon"},{"os":"macos-15-intel","label":"macOS-Intel"},{"os":"windows-latest","label":"Windows-x64"}]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm install --global pnpm@10
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
+      - run: python -m pip install -r requirements-desktop.txt
+      - run: python -m pytest -q
+      - run: python -m PyInstaller --noconfirm --distpath desktop-dist --workpath build-desktop desktop/contour.spec
+      - name: Smoke-test packaged geometry engine
+        run: python scripts/check_desktop.py
+      - name: Create Mac installer
+        if: runner.os == 'macOS'
+        run: python scripts/package_desktop.py
+      - name: Install Windows installer compiler
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: Download Microsoft WebView2 bootstrapper
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile desktop/WebView2Bootstrapper.exe
+      - name: Create Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" desktop\windows.iss'
+      - name: Test installed Windows app and native interface
+        if: runner.os == 'Windows'
+        shell: powershell
+        timeout-minutes: 10
+        run: ./scripts/check_windows_install.ps1
+      - name: Save Windows installation evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Windows-install-evidence
+          path: |
+            releases/windows-install-check.json
+            releases/Windows-first-launch.png
+            ${{ runner.temp }}/Contour-Studio-Windows-check/setup.log
+            ${{ runner.temp }}/Contour-Studio-Windows-check/User data/desktop.log
+          if-no-files-found: warn
+          retention-days: 3
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Contour-Studio-${{ matrix.label }}
+          path: |
+            releases/*.dmg
+            releases/*Setup.exe
+          if-no-files-found: error
+          retention-days: 3

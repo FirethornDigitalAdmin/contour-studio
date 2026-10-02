@@ -8,7 +8,7 @@
 .site-header nav > a { color: #26372f; }
 .coffee-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .site-header .coffee-link { border: 1px solid #d9ddd2; border-radius: 7px; padding: 10px 14px; }
-.site-hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 32px; padding-block: 68px 76px; }
+.site-hero { display: grid; grid-template-columns: .95fr 1.15fr; align-items: center; gap: 40px; padding-block: 40px 68px; }
 .site-kicker { font-size: .75rem; letter-spacing: 1.8px; font-weight: 650; margin: 0 0 18px; color: #8e3b29; }
 .site-hero h1 { font-size: clamp(3.2rem, 5.6vw, 5.1rem); font-weight: 500; letter-spacing: -3.5px; line-height: 1.06; margin: 0 0 28px; }
 .download-site em { font-family: Georgia, serif; font-weight: 400; }
@@ -18,10 +18,6 @@
 .site-button:hover { background: #3c594c; color: white; }
 .site-text-link { display: inline-flex; align-items: center; gap: 8px; color: var(--site-green); font-size: .9375rem; font-weight: 600; }
 .site-free-note { margin: 18px 0 0; font-size: .8125rem; color: var(--site-muted); display: flex; align-items: center; gap: 7px; }
-.site-artwork { margin: 0; border-radius: 14px; overflow: hidden; background: #eeece5; border: 1px solid #e1e1d9; transform: rotate(-2deg); box-shadow: 0 24px 60px #28312c13; }
-.site-artwork-image { aspect-ratio: 1.35; overflow: hidden; }
-.site-artwork img { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(1.6); }
-.site-artwork figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 16px 20px; font-size: .75rem; color: var(--site-muted); background: #f4f3ed; }
 .site-principles { border-block: 1px solid #dfe3d9; background: #f0f2e9; }
 .site-principles > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 23px; }
 .site-principles span { display: flex; align-items: center; gap: 11px; font-size: .875rem; }
@@ -86,7 +82,6 @@
   .site-hero h1 { font-size: clamp(3rem, 11vw, 4.2rem); letter-spacing: -2px; }
   .site-hero .site-kicker { max-width: 280px; font-size: .75rem; }
   .site-lead { font-size: 1rem; }
-  .site-artwork { transform: none; }
   .site-principles > div { flex-wrap: wrap; gap: 16px 24px; padding-block: 22px; }
   .site-principles span { font-size: .875rem; }
   .site-how { padding-block: 55px; }

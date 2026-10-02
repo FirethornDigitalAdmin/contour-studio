@@ -1,5 +1,6 @@
 import { Apple, Check, Code2, Download, Github, Heart, Layers, MapPin, Monitor, Palette, Printer } from "lucide-react";
 import CoffeeLink from "./CoffeeLink";
+import HeroModel from "./HeroModel";
 import { downloadUrl, releaseUrl, repository } from "./distribution";
 import "./download-site.css";
 
@@ -19,7 +20,7 @@ export default function DownloadSite() {
           <div className="site-actions"><a className="site-button" href="#downloads"><Download size={19} />Download for free</a><a className="site-text-link" href={repository} target="_blank" rel="noopener noreferrer"><Github size={19} />View the source</a></div>
           <p className="site-free-note"><Check size={16} />Completely free · Open source · No account needed</p>
         </div>
-        <figure className="site-artwork"><div className="site-artwork-image"><img src="./map-artwork.png" width="1014" height="628" alt="A generated framed relief map with green land, blue rivers and pale roads and buildings" fetchPriority="high" /></div><figcaption><span>Made with Contour Studio</span><span>Digital model preview</span></figcaption></figure>
+        <HeroModel />
       </section>
       <div className="site-principles"><div className="site-width"><span><Monitor size={19} />Runs on your computer</span><span><Printer size={19} />STL & 3MF print files</span><span><Code2 size={19} />MIT licensed</span></div></div>
       <section className="site-how site-width" aria-labelledby="how-title">

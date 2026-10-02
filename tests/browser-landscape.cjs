@@ -1,0 +1,84 @@
+// New landscape controls, colour budget, saved styles and old-draft migration.
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const { reveal } = require("./ui-helpers.cjs");
+const url = process.env.APP_URL || "http://127.0.0.1:8765";
+(async () => {
+  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const page = await browser.newPage({ baseURL: url, viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const button = (name) => page.getByRole("button", { name, exact: true, includeHidden: true });
+  const readSettings = async () => {
+    const saveButton = page.locator(".sidebar").getByRole("button", { name: "Save settings", exact: true, includeHidden: true });
+    await reveal(page, saveButton);
+    const pending = page.waitForEvent("download");
+    await saveButton.click();
+    return JSON.parse(fs.readFileSync(await (await pending).path(), "utf8"));
+  };
+  try {
+    await page.goto(url);
+    await button("Make it yours").click();
+    await reveal(page, button("Add landscape detail"));
+    await button("Add landscape detail").click();
+    let saved = await readSettings();
+    assert.equal(saved.water_style, "smooth");
+    assert.equal(saved.water_bank, 0.8);
+    assert.equal(saved.forest_style, "trees");
+    assert.equal(saved.forests, true);
+    assert.equal(saved.fields, true);
+    await reveal(page, page.getByLabel("Forest treatment", { exact: true }));
+    await page.getByLabel("Forest treatment", { exact: true }).selectOption("canopy");
+    await page.getByLabel("Tree width · mm", { exact: true }).fill("3.2");
+    await page.getByLabel("Tree spacing · mm", { exact: true }).fill("6");
+    await reveal(page, page.getByLabel("Crop row direction · degrees", { exact: true }));
+    await page.getByLabel("Crop row direction · degrees", { exact: true }).fill("75");
+    await page.getByLabel("Crop row rise · mm", { exact: true }).fill("0.6");
+    await reveal(page, page.getByLabel("Multicolour print package", { exact: true }));
+    await page.getByLabel("Multicolour print package", { exact: true }).check();
+    assert.equal(await page.locator(".print-palette-count strong").textContent(), "4 palette colours", "first colour package fits one AMS");
+    await page.getByRole("button", { name: /^Colour atlas · 8/ }).click();
+    await page.getByLabel("Multicolour print package", { exact: true }).uncheck();
+    await page.getByLabel("Multicolour print package", { exact: true }).check();
+    assert.equal(await page.locator(".print-palette-count strong").textContent(), "8 palette colours", "re-enabling preserves a chosen larger palette");
+    await page.getByRole("button", { name: /^Countryside · 4/ }).click();
+    assert.equal(await page.locator(".print-palette-count strong").textContent(), "4 palette colours");
+    saved = await readSettings();
+    assert.equal(new Set(Object.keys(saved).filter((k) => k.startsWith("colour_") && k !== "colour_depth").map((k) => saved[k])).size, 4);
+    await reveal(page, page.getByLabel("Rivers & lakes print colour", { exact: true }));
+    await page.getByLabel("Rivers & lakes print colour", { exact: true }).fill("#2468aa");
+    saved = await readSettings();
+    assert.equal(saved.colour_water, "#2468AA");
+    await page.getByLabel("Multicolour print package", { exact: true }).uncheck();
+    await page.getByLabel("Multicolour print package", { exact: true }).check();
+    assert.equal((await readSettings()).colour_water, "#2468AA", "re-enabling preserves custom shades");
+    await reveal(page, page.getByText("Your style presets", { exact: true }));
+    await page.getByText("Your style presets", { exact: true }).click();
+    await page.getByLabel("Custom style name", { exact: true }).fill("My living landscape");
+    await button("Save style").click();
+    await reveal(page, page.getByLabel("Forest effects", { exact: true }));
+    await page.getByLabel("Forest effects", { exact: true }).uncheck();
+    await reveal(page, page.getByRole("button", { name: /^River study · 2/, includeHidden: true }));
+    await page.getByRole("button", { name: /^River study · 2/, includeHidden: true }).click();
+    await button("My living landscape").click();
+    saved = await readSettings();
+    assert.equal(saved.forests, true);
+    assert.equal(saved.tree_size, 3.2);
+    assert.equal(saved.tree_spacing, 6);
+    assert.equal(saved.field_angle, 75);
+    assert.equal(saved.colour_water, "#2468AA");
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem("contour-studio.draft.v1") || "{}").settings?.colour_water === "#2468AA");
+    await page.reload();
+    await page.getByText("Map features", { exact: true }).waitFor();
+    assert.equal((await readSettings()).colour_water, "#2468AA");
+    for (const size of [{ width: 390, height: 844 }, { width: 768, height: 900 }, { width: 1440, height: 1000 }]) {
+      await page.setViewportSize(size);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "new controls fit the viewport");
+    }
+    await page.locator(".sidebar").evaluate((element) => element.scrollTo({ top: 0 }));
+    await page.screenshot({ path: "data/landscape-controls-desktop.png" });
+    assert.deepEqual(errors, []);
+    console.log("PASS: landscape presets, tree/field controls, four-colour AMS budget, custom shades, saved styles, refresh and mobile layout.");
+  } finally { await browser.close(); }
+})().catch((error) => { console.error(error); process.exitCode = 1; });

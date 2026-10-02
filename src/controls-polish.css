@@ -1,0 +1,144 @@
+.field > input[aria-invalid="true"] {
+  border-color: var(--accent);
+  background: #fff8f3;
+}
+.field-error, .field:has(input[aria-invalid="true"]) small {
+  color: #944833;
+}
+.field-with-error { position: relative; }
+.field .field-error {
+  position: absolute;
+  left: 0;
+  bottom: -16px;
+  max-width: 100%;
+  font-size: .66rem;
+  line-height: 14px;
+  font-weight: 500;
+  pointer-events: none;
+}
+.dimension-tools {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: -2px 0 12px;
+}
+.dimension-tools .toggle {
+  margin: 0;
+  font-size: .75rem;
+  flex: 1;
+}
+.dimension-tools button {
+  flex-shrink: 0;
+  font-size: .72rem;
+  padding: 8px;
+}
+.printer-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.printer-presets button {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  text-align: left;
+}
+.printer-presets strong { font-size: .75rem; font-weight: 550; }
+.printer-presets small { color: var(--muted); font-size: .67rem; }
+.printer-presets + .hint { margin-bottom: 14px; }
+.printer-presets button[aria-pressed="true"],
+.frame-presets button[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: #c3947e;
+  background: var(--accent-soft);
+}
+.settings-feedback {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f7eee2;
+  border: 1px solid #dfc8a6;
+  border-radius: 6px;
+  color: #755436;
+  font-size: .75rem;
+  line-height: 1.6;
+}
+.settings-feedback button {
+  margin-top: 9px;
+  font-size: .75rem;
+  padding: 7px 9px;
+  background: #fffcf7;
+}
+.frame-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.frame-presets button { font-size: .75rem; padding: 9px 6px; }
+.caption-preview {
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #eeede6;
+  text-align: center;
+}
+.caption-preview strong { font-size: .77rem; letter-spacing: .06em; text-transform: uppercase; }
+.caption-preview small { font-size: .7rem; font-variant-numeric: tabular-nums; }
+.caption-preview > span { font-size: .65rem; color: var(--muted); }
+.marker-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.duplicate-marker { font-size: .73rem; padding: 6px 8px; }
+.marker-coordinates { color: var(--muted); font-size: .68rem; font-variant-numeric: tabular-nums; margin-bottom: 10px; }
+.marker-placement-note { border-radius: 5px; padding: 10px; color: var(--green); background: var(--green-soft); font-size: .75rem; line-height: 1.6; margin: 10px 0; }
+.marker-card.needs-position { border-color: #d9b59a; }
+.marker-card.needs-position .marker-heading small { color: #995432; }
+.marker-editor > .hint { font-size: .73rem; }
+.marker-recentre { padding: 6px 9px; font-size: .73rem; margin: 6px 0; }
+.terrain-adjustments { margin: 18px 0 0; }
+.terrain-adjustments > h4 { margin-bottom: 12px; }
+.terrain-adjustments .hint { font-size: .72rem; }
+.legacy-marker-tools { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.legacy-marker-tools button { font-size: .75rem; padding: 8px; }
+.frame-fit-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  margin: 10px 0 16px;
+  border: 1px solid #cedacc;
+  border-radius: 8px;
+  color: var(--green);
+  background: var(--green-soft);
+}
+.frame-fit-summary > svg { flex-shrink: 0; }
+.frame-fit-summary span { display: grid; gap: 4px; min-width: 0; }
+.frame-fit-summary strong { font-size: .76rem; font-weight: 550; }
+.frame-fit-summary small { font-size: .69rem; line-height: 1.6; }
+.style-library-empty {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: .75rem;
+  line-height: 1.6;
+}
+.settings-feedback p { margin: 0; }
+.settings-feedback button { min-height: 36px; }
+.marker-actions button { min-height: 36px; }
+.field small { overflow-wrap: anywhere; }
+.section-label, .marker-heading > span:nth-child(2) { min-width: 0; }
+.marker-heading strong, .marker-heading small { overflow-wrap: anywhere; }
+.custom-style-list > div { min-width: 0; }
+.custom-style-list button:first-child > svg { flex-shrink: 0; }
+@media (max-width: 380px) {
+  .dimension-tools { flex-wrap: wrap; }
+  .dimension-tools .toggle { flex-basis: 100%; }
+  .marker-actions { flex-wrap: wrap; }
+}

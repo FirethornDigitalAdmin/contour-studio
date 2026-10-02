@@ -2,11 +2,11 @@
 
 The desktop app opens Contour Studio in a native window and bundles its Python geometry engine. Each user's computer builds its own artwork. There is no hosted generation service, account, or generation charge.
 
-**Status: desktop release candidate.** The local app's combined source checks passed 203 Python tests, real landscape/city exports and Bambu Studio colour imports. The Apple Silicon Mac bundle has been opened in its native window, and its frozen engine passed a watertight STL/ZIP and worker-IPC smoke check. Windows and Intel Mac installers remain untested. The build targets are Apple Silicon Mac, Intel Mac and Windows x64. Each installer still needs a real install, launch, generation and download trial on its target operating system before claiming supported releases. See [UI-REVIEW.md](UI-REVIEW.md) and [VERIFICATION.md](VERIFICATION.md) for the evidence and limits.
+**Status: desktop release candidate.** The combined source suite passes 205 Python tests. Windows setup has passed an actual installation, native WebView2 rendering, draft restoration, installed-engine watertight STL/ZIP generation and uninstall trial on a GitHub Windows runner. The Apple Silicon app has been opened in its native window and passed its frozen-engine check. The current candidates include the final frame/colour fixes and a Windows window size that adapts to smaller or scaled displays. Personal-computer display scaling, native file downloads and a real-data Windows generation still need manual trials. Intel Mac remains untested. See [UI-REVIEW.md](UI-REVIEW.md) and [VERIFICATION.md](VERIFICATION.md) for the evidence and limits.
 
 ## Install a release
 
-Use the installer matching your computer. The Apple Silicon candidate is in the local `releases/` folder; Windows and Intel Mac installers must be built on their target systems. A public download is available only after an installer is published to your GitHub Releases:
+Use the installer matching your computer. Windows x64 and Apple Silicon candidates are saved in the local `releases/` folder. Windows build artifacts are also available through [Firethorn's installer workflow](https://github.com/FirethornDigitalAdmin/contour-studio/actions/workflows/desktop.yml). Intel Mac must be built and tested on its target system. The repository is private; no public release has been published.
 
 | Computer | File | Install |
 | --- | --- | --- |
@@ -33,10 +33,10 @@ Back up this folder before updating. Installing a new app version keeps user dat
 
 1. Push the clean source to your repository.
 2. Open [Firethorn Actions](https://github.com/FirethornDigitalAdmin/contour-studio/actions) → **Build desktop installers → Run workflow**, choose Windows x64 (the default) or the required Mac target, and run it.
-3. The workflow builds on native macOS Apple Silicon, macOS Intel and Windows x64 runners, runs the Python/frontend checks, then smoke-tests the frozen geometry engine. The Windows job also installs the setup EXE, checks real WebView2 buttons, changes a workflow step, closes/reopens to check draft persistence, generates an offline STL/ZIP using the installed engine, and uninstalls the app. Its report, screenshot and logs are saved as **Windows-install-evidence**. This new check has not yet run on Windows.
+3. The workflow builds on native macOS Apple Silicon, macOS Intel and Windows x64 runners, runs the Python/frontend checks, then smoke-tests the frozen geometry engine. The Windows job also installs the setup EXE, checks real WebView2 buttons, changes a workflow step, closes/reopens to check draft persistence, generates an offline STL/ZIP using the installed engine, and uninstalls the app. Its report, screenshot and logs are saved as **Windows-install-evidence**. This trial has passed on Windows.
 4. Download successful installer artifacts and test them on the matching computers. Check first launch, map interaction, a real-data generation, native file downloads and saved projects after reopening. On Windows, check 100%, 125%, 150% and 200% display scaling. The automatic check does not cover these personal-computer journeys. Attach verified installers to a GitHub Release.
 
-The workflow is manual so ordinary edits do not rebuild three large installers. It creates artifacts; it does not publish a release or sign the application. See [GitHub's Actions billing documentation](https://docs.github.com/en/billing/concepts/product-billing/github-actions) for standard public-repository runner use and artifact-storage allowances.
+The workflow is manual so ordinary edits do not rebuild three large installers. It creates artifacts; it does not publish a release or sign the application. Artifacts are retained for three days, so save the installer locally or attach it to a release when ready to distribute. The final Windows candidate is from [successful build #3](https://github.com/FirethornDigitalAdmin/contour-studio/actions/runs/37073307852), commit `3772edf`. Both downloaded artifact archives match GitHub's SHA-256 digests. See [GitHub's Actions billing documentation](https://docs.github.com/en/billing/concepts/product-billing/github-actions) for runner use and artifact-storage allowances.
 
 ## Build locally
 

@@ -4,9 +4,9 @@ Contour Studio turns a real place into a 3D-printable relief map. Your own compu
 
 ## Install the desktop app
 
-When installers are available on GitHub Releases, choose **macOS Apple Silicon**, **macOS Intel**, or **Windows x64**. On Mac, open the DMG and drag Contour Studio to Applications. On Windows, run the setup EXE and open the app from the Start menu. Installed users do not need Python, Node.js or a terminal.
+Use `Contour-Studio-Windows-x64-Setup.exe` on Windows, or `Contour-Studio-macOS-arm64.dmg` on Apple Silicon Mac. Candidates are saved in the project's `releases/` folder; Windows downloads are also available from successful runs of [Firethorn's installer workflow](https://github.com/FirethornDigitalAdmin/contour-studio/actions/workflows/desktop.yml). On Mac, open the DMG and drag Contour Studio to Applications. On Windows, run the setup EXE and open the app from the Start menu. Installed users do not need Python, Node.js or a terminal.
 
-Desktop packaging is experimental until each target's installer has passed a real launch and generation trial. See [DESKTOP.md](DESKTOP.md) for current build instructions, user-data locations and unsigned-build guidance. The local-browser ZIP remains available below.
+These are unsigned release candidates. Windows has passed an automated installation, native UI, draft-restoration, generation and uninstall trial; Apple Silicon has passed native launch and engine checks. Intel Mac remains untested. See [DESKTOP.md](DESKTOP.md) for the remaining personal-computer trials, user-data locations and unsigned-build guidance. The local-browser ZIP remains available below.
 
 ## Use the free web workspace
 

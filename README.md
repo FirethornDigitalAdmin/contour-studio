@@ -6,11 +6,11 @@ Turn a real place into a framed, tiled, 3D-printable relief map. Design your art
 
 | Version | What it does | Setup |
 | --- | --- | --- |
-| Desktop app | Design and generate in a native window on macOS or Windows. | Experimental installer builds; see [DESKTOP.md](DESKTOP.md). |
+| Desktop app | Design and generate in a native window on macOS or Windows. | Windows x64 and Apple Silicon release candidates; see [DESKTOP.md](DESKTOP.md). |
 | Free web workspace | Select a place, customise the artwork and save design settings. | Static GitHub Pages hosting; see [HOSTING.md](HOSTING.md). Generate print files using a local copy. |
 | Local browser app | Full design and generation on your computer. | Download **Contour-Studio-local.zip**, install Python 3.12, then follow [START-HERE.md](START-HERE.md). |
 
-The desktop packaging targets **Apple Silicon Mac, Intel Mac and Windows x64**. Installers bundle Python and the geometry engine, so users do not need Python, Node.js or a terminal. Packaging and each operating system's real launch still need verification before a supported release is announced. Internet is needed for uncached map data and the basemap.
+Installers bundle Python and the geometry engine, so users do not need Python, Node.js or a terminal. **Windows x64** has passed an automated installation, native UI, saved-draft, generation and uninstall trial. **Apple Silicon Mac** has passed native launch and packaged-engine checks. Intel Mac remains an untested build target. The private repository is [FirethornDigitalAdmin/contour-studio](https://github.com/FirethornDigitalAdmin/contour-studio); no public release has been published. Internet is needed for uncached map data and the basemap. See [DESKTOP.md](DESKTOP.md) for download instructions and remaining manual checks.
 
 For the local browser ZIP, extract it and open `start.command` on Mac, `start.bat` on Windows, or `bash start.sh` on Linux. It opens **http://127.0.0.1:8765**. First launch installs Python dependencies. Keep the terminal open while using the app; Ctrl+C stops it. The ZIP contains the compiled interface and does not require Node.js or Codex.
 

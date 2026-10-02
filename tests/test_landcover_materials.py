@@ -117,6 +117,34 @@ def test_smooth_water_banks_and_landcover_colour_are_printable_together():
         assert union(list(regions.values())).volume()==pytest.approx(part['solid'].volume(),abs=.001)
 
 
+def test_adjacent_small_buildings_and_draped_features_export_closed_colours(tmp_path):
+    from backend.export import build_project
+    # Two real mapped footprints share a skewed wall. Enhancing them and
+    # re-snapping paint masks must not leave ground sheets up their walls.
+    houses=[Polygon([(10.101264864862138,36.953667494959916),
+                     (9.448481081086612,37.12281989948034),
+                     (9.533421621651229,37.488077811739586),
+                     (9.603681081112782,37.79199495874276),
+                     (10.256464864886937,37.62284226692273)]),
+            Polygon([(10.755621621664542,36.785444571342936),
+                     (10.101264864862138,36.953667494959916),
+                     (10.256464864886937,37.62284226692273),
+                     (10.912394594569545,37.45554846739715)])]
+    def neighbourhood(xs,ys,geo):
+        return np.add.outer(ys*.4,xs*.1),[
+            *[('building',house,{'building':'yes'}) for house in houses],
+            ('road',LineString([(8,35),(14,40)]),{}),
+            ('field',box(8,34,15,42),{})]
+    s=settings(roads='raised',water=False,fields=True,multicolour=True).model_copy(
+        update={'frame_mode':'separate','frame_width':6})
+    info=build_project(s,tmp_path,quiet,neighbourhood)
+    assert info['model']['features']['enhanced_buildings']==2
+    for tile in info['multicolour']['tiles']:
+        for material in tile['materials']:
+            mesh=trimesh.load_mesh(tmp_path/material['file'])
+            assert mesh.is_watertight and mesh.is_volume
+
+
 @pytest.mark.parametrize('water',[False,True])
 def test_deep_engraved_roads_keep_the_minimum_colour_layer(water):
     def flat_road(xs,ys,geo):

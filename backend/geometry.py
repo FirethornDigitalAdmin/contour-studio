@@ -866,11 +866,18 @@ def generate_solids(s, progress, data_override=None):
                           ('buildings',unary_union([a for a,_ in building_tops])),
                           ('markers',unary_union(marker_areas))]:
             if name=='water': area=area.buffer(-0.005)
+            if name=='buildings':
+                # Fully cover the physical roof/wall footprint after mask
+                # snapping; a cut just inside a wall leaves an unprintable
+                # sliver of ground running up the building.
+                area=area.buffer(0.01,join_style=2)
             if name=='roads' and not water_area.is_empty:
                 # The channel cuts raised roads away. Do not colour that
                 # removed road column or its coincident channel-wall skin.
                 area=area.difference(water_area.buffer(s.water_bank*0.75+0.005))
             if name=='roads':
+                # A finite inset keeps colour boundaries away from the
+                # draped cap wall and higher-priority building/marker walls.
                 area=area.difference(unary_union([
                     *[a.buffer(0.01) for a,_ in building_tops],
                     *[a.buffer(0.01) for a in marker_areas]])).buffer(-0.05)
@@ -883,8 +890,8 @@ def generate_solids(s, progress, data_override=None):
                     *[a.buffer(0.005) for a,_ in building_tops],
                     *[a.buffer(0.005) for a in marker_areas]]))
                 if name=='fields': area=area.difference(forest_area.buffer(0.005))
-                # Include complete crowns and ridges that reach the source
-                # edge, while keeping the flat paint skin away from contacts.
+                # Include crowns and ridge interiors near source edges,
+                # keeping paint cuts inside the draped ridge walls.
                 area=area.union(tree_footprint if name=='forest' else field_footprint.buffer(-0.05))
             area=area.intersection(map_clip.buffer(-0.005))
             # A positive paint overlap joins source corner contacts inside

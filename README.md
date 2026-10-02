@@ -1,5 +1,11 @@
 # Contour Studio
 
+**Completely free. Completely open source. Yours to build on.**
+
+[Download the app](https://firethorndigitaladmin.github.io/contour-studio/#downloads) · [Free web designer](https://firethorndigitaladmin.github.io/contour-studio/#workspace) · [Public releases](https://github.com/FirethornDigitalAdmin/contour-studio/releases) · [Buy me a coffee](https://www.buymeacoffee.com/LouisGoldsbrough)
+
+Use, modify, share or sell the application under the MIT licence; retain its copyright and licence notice. There is no subscription, paid tier or generation fee. Buying a coffee is an entirely optional thank you and unlocks nothing. Geographic data and third-party dependencies retain their own licences.
+
 Turn a real place into a framed, tiled, 3D-printable relief map. Design your artwork in a browser or the desktop app; your own computer generates the print files and stores your projects. No account or paid generation server is required. The geometry engine is Python; the interface is React, TypeScript, MapLibre and Three.js.
 
 ## Choose how to use it
@@ -10,7 +16,7 @@ Turn a real place into a framed, tiled, 3D-printable relief map. Design your art
 | Free web workspace | Select a place, customise the artwork and save design settings. | Static GitHub Pages hosting; see [HOSTING.md](HOSTING.md). Generate print files using a local copy. |
 | Local browser app | Full design and generation on your computer. | Download **Contour-Studio-local.zip**, install Python 3.12, then follow [START-HERE.md](START-HERE.md). |
 
-Installers bundle Python and the geometry engine, so users do not need Python, Node.js or a terminal. **Windows x64** has passed an automated installation, native UI, saved-draft, generation and uninstall trial. **Apple Silicon Mac** has passed native launch and packaged-engine checks. Intel Mac remains an untested build target. The private repository is [FirethornDigitalAdmin/contour-studio](https://github.com/FirethornDigitalAdmin/contour-studio); no public release has been published. Internet is needed for uncached map data and the basemap. See [DESKTOP.md](DESKTOP.md) for download instructions and remaining manual checks.
+Installers bundle Python and the geometry engine, so users do not need Python, Node.js or a terminal. **Windows x64** has passed an automated installation, native UI, saved-draft, generation and uninstall trial. **Apple Silicon Mac** has passed native launch and packaged-engine checks. Intel Mac remains an untested build target. The public repository is [FirethornDigitalAdmin/contour-studio](https://github.com/FirethornDigitalAdmin/contour-studio). Download the first public preview from [Releases](https://github.com/FirethornDigitalAdmin/contour-studio/releases/tag/v1.0.0-rc.1). Internet is needed for uncached map data and the basemap. See [DESKTOP.md](DESKTOP.md) for download instructions and remaining manual checks.
 
 For the local browser ZIP, extract it and open `start.command` on Mac, `start.bat` on Windows, or `bash start.sh` on Linux. It opens **http://127.0.0.1:8765**. First launch installs Python dependencies. Keep the terminal open while using the app; Ctrl+C stops it. The ZIP contains the compiled interface and does not require Node.js or Codex.
 

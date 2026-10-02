@@ -1,0 +1,10 @@
+.entry-loading { padding: 32px; }
+.app-coffee-link { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #dbc991; background: #fbf3d9; color: #584b21; border-radius: 7px; padding: 9px 11px; min-height: 40px; font-size: .8125rem; white-space: nowrap; }
+.app-coffee-link:hover { background: #f6e8b6; color: #403611; }
+.help-support { margin-top: 25px; padding-top: 22px; border-top: 1px solid var(--line); }
+.help-support h3 { font-size: 1rem; margin: 0 0 10px; }
+.help-support p { font-size: .875rem; color: #586358; line-height: 1.7; margin: 12px 0; }
+.help-support-links { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-block: 15px; font-size: .875rem; }
+.help-support-links a { display: inline-flex; align-items: center; gap: 7px; }
+.help-support > .coffee-link { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 7px; border: 1px solid #dbc991; color: #584b21; background: #fbf3d9; font-size: .875rem; }
+@media (max-width: 1180px) { .header-tools .app-coffee-link span { display: none; } .header-tools .app-coffee-link { padding: 9px; } }

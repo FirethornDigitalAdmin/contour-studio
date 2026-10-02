@@ -1,0 +1,105 @@
+.download-site { --site-green: #263e36; --site-cream: #fcfbf7; --site-muted: #59665e; background: var(--site-cream); color: #26372f; line-height: 1.6; }
+.site-width { width: min(1200px, calc(100% - 64px)); margin-inline: auto; }
+.site-header { min-height: 96px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.site-brand { display: inline-flex; gap: 7px; align-items: center; color: #26372f; font-size: 1.4rem; font-weight: 700; letter-spacing: -.6px; white-space: nowrap; }
+.site-brand > span:first-child { width: 40px; height: 40px; margin-right: 5px; display: grid; place-items: center; background: var(--site-green); color: white; border-radius: 11px; }
+.site-brand-light { font-weight: 400; }
+.site-header nav { display: flex; align-items: center; flex-wrap: wrap; gap: 30px; font-size: .875rem; }
+.site-header nav > a { color: #26372f; }
+.coffee-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.site-header .coffee-link { border: 1px solid #d9ddd2; border-radius: 7px; padding: 10px 14px; }
+.site-hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 32px; padding-block: 68px 76px; }
+.site-kicker { font-size: .75rem; letter-spacing: 1.8px; font-weight: 650; margin: 0 0 18px; color: #8e3b29; }
+.site-hero h1 { font-size: clamp(3.2rem, 5.6vw, 5.1rem); font-weight: 500; letter-spacing: -3.5px; line-height: 1.06; margin: 0 0 28px; }
+.download-site em { font-family: Georgia, serif; font-weight: 400; }
+.site-lead { font-size: 1.125rem; line-height: 1.75; max-width: 480px; color: var(--site-muted); margin: 0 0 29px; }
+.site-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; }
+.site-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 13px 20px; border: 1px solid var(--site-green); border-radius: 7px; background: var(--site-green); color: white; font-size: .9375rem; font-weight: 600; min-height: 48px; transition: background .15s; }
+.site-button:hover { background: #3c594c; color: white; }
+.site-text-link { display: inline-flex; align-items: center; gap: 8px; color: var(--site-green); font-size: .9375rem; font-weight: 600; }
+.site-free-note { margin: 18px 0 0; font-size: .8125rem; color: var(--site-muted); display: flex; align-items: center; gap: 7px; }
+.site-artwork { margin: 0; border-radius: 14px; overflow: hidden; background: #eeece5; border: 1px solid #e1e1d9; transform: rotate(-2deg); box-shadow: 0 24px 60px #28312c13; }
+.site-artwork-image { aspect-ratio: 1.35; overflow: hidden; }
+.site-artwork img { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(1.6); }
+.site-artwork figcaption { display: flex; justify-content: space-between; gap: 12px; padding: 16px 20px; font-size: .75rem; color: var(--site-muted); background: #f4f3ed; }
+.site-principles { border-block: 1px solid #dfe3d9; background: #f0f2e9; }
+.site-principles > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 23px; }
+.site-principles span { display: flex; align-items: center; gap: 11px; font-size: .875rem; }
+.site-how { padding-block: 90px; }
+.site-section-heading h2, .site-thanks h2 { font-size: clamp(2rem, 3vw, 2.6rem); line-height: 1.18; font-weight: 500; letter-spacing: -1px; margin: 0 0 18px; }
+.site-section-heading > p:last-child { color: var(--site-muted); max-width: 650px; }
+.site-how ol { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px; padding: 0; margin: 42px 0 0; }
+.site-how li { position: relative; }
+.site-how li > svg { color: #526b56; }
+.site-step-number { float: right; color: #7c897e; font-size: .75rem; }
+.download-site h3 { font-size: 1.25rem; font-weight: 600; line-height: 1.3; margin: 17px 0 12px; }
+.site-how li p { margin: 0; color: var(--site-muted); }
+.site-downloads { border-top: 1px solid #dfe3d9; padding-block: 74px 84px; scroll-margin-top: 24px; }
+.site-download-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 34px; }
+.site-download-grid article { display: flex; flex-direction: column; align-items: flex-start; padding: 30px; border: 1px solid #d8ded3; border-radius: 11px; background: #f5f6ef; }
+.site-download-grid article p { color: var(--site-muted); margin: 0 0 25px; }
+.site-download-grid article .site-button { margin-top: auto; width: 100%; }
+.site-download-grid article .site-file-note { font-size: .8125rem; margin: 12px 0 0; }
+.site-download-grid .site-source-download { background: transparent; }
+.site-button-outline { background: transparent; color: var(--site-green); }
+.site-install-note { display: flex; gap: 28px; align-items: flex-start; padding-block: 24px 18px; font-size: .875rem; color: var(--site-muted); }
+.site-install-note p { margin: 0; max-width: 850px; }
+.site-install-note a { flex: 0 0 195px; text-decoration: underline; text-underline-offset: 4px; color: var(--site-green); }
+.site-browser-option { font-size: .9375rem; margin: 0; }
+.site-browser-option a { text-decoration: underline; text-underline-offset: 4px; }
+.site-freedom { background: var(--site-green); color: #fcfbf7; padding-block: 82px; scroll-margin-top: 0; }
+.site-freedom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 70px; }
+.site-freedom .site-kicker { color: #d8c8a4; }
+.site-freedom h2 { margin: 0; font-size: clamp(2.6rem, 4vw, 3.5rem); font-weight: 500; line-height: 1.13; letter-spacing: -1.5px; }
+.site-freedom p:not(.site-kicker) { margin: 0 0 20px; color: #e0e6de; }
+.site-freedom .site-actions { margin-top: 26px; }
+.site-button-light { background: #fcfbf7; color: var(--site-green); border-color: #fcfbf7; }
+.site-freedom .site-text-link { color: #e0e6de; text-decoration: underline; text-underline-offset: 4px; font-weight: 400; font-size: .875rem; }
+.site-thanks { padding-block: 75px; display: grid; grid-template-columns: auto 1fr auto; gap: 28px; align-items: center; }
+.site-thanks-icon { background: #f4e8dc; color: #9b432c; display: grid; place-items: center; width: 68px; height: 68px; border-radius: 50%; }
+.site-thanks h2 { font-size: 2rem; margin-bottom: 12px; }
+.site-thanks .site-kicker { margin-bottom: 12px; }
+.site-thanks p:last-child { color: var(--site-muted); max-width: 650px; margin: 0; }
+.site-coffee-button { padding: 14px 20px; background: #ffe48e; color: #352d12; border: 1px solid #e0c365; border-radius: 7px; font-size: .9375rem; font-weight: 600; }
+.site-coffee-button:hover { background: #ffda63; }
+.site-footer { padding-block: 24px; border-top: 1px solid #dfe3d9; display: flex; justify-content: space-between; gap: 24px; font-size: .8125rem; color: var(--site-muted); }
+.site-footer > div { display: flex; gap: 24px; flex-wrap: wrap; }
+.site-footer a { color: var(--site-muted); }
+.site-skip { position: absolute; left: 20px; top: -100px; padding: 12px; z-index: 20; background: #fff; }
+.site-skip:focus { top: 10px; }
+@media (max-width: 960px) {
+  .site-header nav { gap: 18px; }
+  .site-hero { gap: 20px; padding-block: 45px 60px; }
+  .site-hero h1 { letter-spacing: -2px; }
+  .site-download-grid article { padding: 22px; }
+  .site-how ol { gap: 26px; }
+  .site-freedom-grid { gap: 34px; }
+  .site-thanks { grid-template-columns: auto 1fr; }
+  .site-thanks .site-coffee-button { grid-column: 2; justify-self: start; }
+}
+@media (max-width: 700px) {
+  .site-width { width: calc(100% - 40px); }
+  .site-header { min-height: 90px; flex-wrap: wrap; gap: 14px; padding-block: 20px; }
+  .site-header nav { width: 100%; justify-content: space-between; gap: 12px; }
+  .site-header .coffee-link { padding: 9px; }
+  .site-hero { grid-template-columns: 1fr; gap: 38px; padding-block: 35px 44px; }
+  .site-hero h1 { font-size: clamp(3rem, 11vw, 4.2rem); letter-spacing: -2px; }
+  .site-hero .site-kicker { max-width: 280px; font-size: .75rem; }
+  .site-lead { font-size: 1rem; }
+  .site-artwork { transform: none; }
+  .site-principles > div { flex-wrap: wrap; gap: 16px 24px; padding-block: 22px; }
+  .site-principles span { font-size: .875rem; }
+  .site-how { padding-block: 55px; }
+  .site-how ol, .site-download-grid { grid-template-columns: 1fr; gap: 28px; }
+  .site-how li { border-bottom: 1px solid #dfe3d9; padding-bottom: 24px; }
+  .site-downloads { padding-block: 50px; }
+  .site-download-grid { gap: 14px; }
+  .site-download-grid article { padding: 24px; }
+  .site-install-note { flex-direction: column; gap: 14px; }
+  .site-install-note a { flex: auto; }
+  .site-freedom { padding-block: 55px; }
+  .site-freedom-grid { grid-template-columns: 1fr; gap: 28px; }
+  .site-thanks { padding-block: 50px; grid-template-columns: 1fr; gap: 22px; }
+  .site-thanks .site-coffee-button { grid-column: 1; }
+  .site-footer { flex-direction: column; gap: 15px; }
+}

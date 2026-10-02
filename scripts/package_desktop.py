@@ -1,5 +1,6 @@
 """Create a drag-to-Applications Mac installer from the native app bundle."""
 import platform
+import os
 import shutil
 import subprocess
 import tempfile
@@ -10,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     if platform.system() != 'Darwin':
         raise SystemExit('Build the Windows installer with desktop/windows.iss on Windows.')
-    app = ROOT / 'desktop-dist' / 'Contour Studio.app'
+    app = Path(os.environ.get('CONTOUR_DESKTOP_DIR', ROOT / 'desktop-dist')) / 'Contour Studio.app'
     if not app.exists():
         raise SystemExit('Build the desktop app first; see DESKTOP.md.')
     releases = ROOT / 'releases'

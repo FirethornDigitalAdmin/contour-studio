@@ -28,7 +28,10 @@ import {
   CircleHelp,
   Monitor,
   ExternalLink,
+  Github,
 } from "lucide-react";
+import CoffeeLink from "./CoffeeLink";
+import { repository, releaseUrl } from "./distribution";
 import { api, hostedWorkspace, starterPlaces } from "./hosted";
 import { ApiError, layout, type Settings, type Job } from "./types";
 import { Field, NumberField, Section } from "./Controls";
@@ -532,6 +535,7 @@ export default function App() {
           ))}
         </nav>
         <div className="header-tools">
+        <CoffeeLink className="app-coffee-link" />
         <button className="help-button" aria-label="How it works" title="How it works" onClick={() => helpDialog.current?.showModal()}><CircleHelp size={19} /><span>Help</span></button>
         <button
           className="projects-button"
@@ -1164,9 +1168,16 @@ export default function App() {
           <li><Palette size={22} /><div><strong>Give it your own character</strong><p>Shape the relief, pick a frame, and mark the places that matter.</p></div></li>
           <li><Printer size={22} /><div><strong>Make it on your computer</strong><p>{hostedWorkspace ? "Save your settings below. Open the local app, import the file, then choose Generate model. Your computer builds the printable pieces." : "Generate your model, inspect the preview, then download your print pack. Start with a fit-test piece before printing the full artwork."}</p></div></li>
         </ol>
-        {hostedWorkspace && <p className="help-install">Install Contour Studio for macOS or Windows from this project's desktop release, then import your saved settings. The desktop app includes its generation engine. See START-HERE.md for the available download options.</p>}
+        {hostedWorkspace && <p className="help-install">Download Contour Studio for macOS or Windows, then import your saved settings. The desktop app includes its generation engine. <a href="./#downloads">Get the free desktop app</a>.</p>}
         <div className="help-actions"><button className="primary" onClick={saveSettings}><Download size={17} />Save settings</button>{hostedWorkspace && <a href="http://127.0.0.1:8767" target="_blank" rel="noreferrer">Open local workspace <ExternalLink size={15} /></a>}</div>
         <p className="hint">No account needed. Drafts stay in your browser; generated models stay on your computer.</p>
+        <section className="help-support" aria-labelledby="support-title">
+          <h3 id="support-title">Free to make it your own.</h3>
+          <p>Contour Studio is completely free and open source under the MIT licence. Use, modify, share or sell the software; keep its copyright and licence notice. Map data and libraries retain their own licences.</p>
+          <div className="help-support-links"><a href={repository} target="_blank" rel="noopener noreferrer"><Github size={17} />Public GitHub repository</a><a href={releaseUrl} target="_blank" rel="noopener noreferrer">Downloads & release notes</a></div>
+          <p>If you’ve enjoyed using it, you can buy me a coffee as a thanks. It’s entirely optional; every feature stays free.</p>
+          <CoffeeLink />
+        </section>
       </dialog>
       <dialog
         ref={projectDialog}

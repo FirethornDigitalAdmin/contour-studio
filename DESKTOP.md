@@ -6,7 +6,7 @@ The desktop app opens Contour Studio in a native window and bundles its Python g
 
 ## Install a release
 
-Use the installer matching your computer. Windows x64 and Apple Silicon candidates are saved in the local `releases/` folder. Windows build artifacts are also available through [Firethorn's installer workflow](https://github.com/FirethornDigitalAdmin/contour-studio/actions/workflows/desktop.yml). Intel Mac must be built and tested on its target system. The repository is private; no public release has been published.
+Use the installer matching your computer. Windows x64 and Apple Silicon candidates are saved in the local `releases/` folder. Windows build artifacts are also available through [Firethorn's installer workflow](https://github.com/FirethornDigitalAdmin/contour-studio/actions/workflows/desktop.yml). Intel Mac must be built and tested on its target system. Download public installers from [Releases](https://github.com/FirethornDigitalAdmin/contour-studio/releases/tag/v1.0.0-rc.1), or use the [download website](https://firethorndigitaladmin.github.io/contour-studio/#downloads). Intel Mac remains an untested build target and is not included in this public preview.
 
 | Computer | File | Install |
 | --- | --- | --- |
@@ -19,6 +19,10 @@ Python and Node.js are included or unnecessary for installed users. Internet is 
 Community builds are unsigned and Mac builds are not notarised. Download only a build you trust. macOS may require **System Settings → Privacy & Security → Open Anyway**; Windows may show an unknown-publisher prompt. Distribution with verified publisher identity requires separate signing credentials.
 
 Closing the app stops any active generation. Completed projects remain available on the next launch. The engine listens on `127.0.0.1:8767` and runs one model at a time.
+
+## Optional thank you
+
+The app is completely free and open source. The toolbar and Help panel link to [Buy Me a Coffee](https://www.buymeacoffee.com/LouisGoldsbrough). This is an optional thank you: downloads and every feature are available without donating.
 
 ## Projects and updates
 

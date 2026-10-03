@@ -88,8 +88,21 @@ def run_application(data_root):
             return
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.settings['OPEN_EXTERNAL_LINKS_IN_BROWSER'] = True
+        from desktop.updater import UpdateBridge
+        from backend.app import jobs, lock
+        def generation_busy():
+            with lock:
+                busy = any(job.get('status') in ('queued', 'running') for job in jobs.values())
+                if not busy:
+                    app.state.update_installing = True
+                return busy
+        def release_update():
+            with lock:
+                app.state.update_installing = False
+        updater = UpdateBridge(data_root, generation_busy, release_update)
         window = webview.create_window('Contour Studio', f'http://127.0.0.1:{port}', **window_options(),
-                              background_color='#fcfbf7', confirm_close=False, text_select=True)
+                              background_color='#fcfbf7', confirm_close=False, text_select=True, js_api=updater)
+        updater.window = window
         from desktop.menus import studio_menu
         webview.start(menu=studio_menu(window), private_mode=False, storage_path=str(data_root / 'browser'), **browser_options)
     finally:

@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 from desktop import main as desktop
 import ctypes
+from threading import Lock
 
 
 def runtime(monkeypatch, starts=True, busy=False):
@@ -25,7 +26,7 @@ def runtime(monkeypatch, starts=True, busy=False):
     server.run = run
     monkeypatch.setitem(sys.modules, 'webview', view)
     monkeypatch.setitem(sys.modules, 'uvicorn', SimpleNamespace(Config=Mock(), Server=lambda _: server))
-    monkeypatch.setitem(sys.modules, 'backend.app', SimpleNamespace(app=object()))
+    monkeypatch.setitem(sys.modules, 'backend.app', SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()), jobs={}, lock=Lock()))
     monkeypatch.setattr('desktop.menus.studio_menu', lambda window: ['studio-menu'])
     stop_workers = Mock()
     monkeypatch.setitem(sys.modules, 'backend.worker', SimpleNamespace(stop_workers=stop_workers))

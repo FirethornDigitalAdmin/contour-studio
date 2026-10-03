@@ -19,6 +19,15 @@ const url = process.env.APP_URL || 'http://127.0.0.1:18867';
       download_url: info.releases_url + '/download/v1.0.0-rc.3/Contour-Studio-macOS-arm64.dmg' } });
   });
   try {
+    await page.addInitScript(() => {
+      let state = { status: 'idle' };
+      window.nativeRestarts = 0;
+      window.pywebview = { api: {
+        install_update: async () => { state = { status: 'downloading', progress: 45 }; return state; },
+        update_status: async () => { const previous = state; state = { status: 'ready', message: 'Ready to restart' }; return previous; },
+        restart_for_update: async () => { window.nativeRestarts++; return { status: 'installing', message: 'Installing and restarting…' }; }
+      } };
+    });
     await page.goto(url);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: 'Update available', exact: true }).waitFor();
@@ -46,8 +55,8 @@ const url = process.env.APP_URL || 'http://127.0.0.1:18867';
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByRole('button', { name: 'Update available', exact: true }).click();
     assert.equal(await page.locator('dialog[aria-labelledby="help-title"]').isVisible(), false, 'menu switches safely between dialogs');
-    await page.getByRole('link', { name: 'Download update', exact: true }).waitFor();
-    assert.match(await page.getByRole('link', { name: 'Download update', exact: true }).getAttribute('href'), /macOS-arm64.dmg$/);
+    await page.getByRole('button', { name: 'Download & install', exact: true }).waitFor();
+    assert.equal(await page.getByRole('link', { name: 'Download update', exact: true }).count(), 0, 'update uses the native installer rather than a browser download');
     assert.equal(await page.evaluate(() => window.badUpdate), undefined, 'release notes are plain text');
     assert.match(await page.locator('.update-notes').innerText(), /<script>/);
     fs.mkdirSync('data/ui-review', { recursive: true });
@@ -55,7 +64,7 @@ const url = process.env.APP_URL || 'http://127.0.0.1:18867';
     state = 'offline';
     await page.getByRole('button', { name: 'Check again', exact: true }).click();
     await page.getByText('Couldn’t check for updates.', { exact: false }).waitFor();
-    assert.equal(await page.getByRole('link', { name: 'Download update', exact: true }).count(), 0, 'failed check does not retain an old download');
+    assert.equal(await page.getByRole('button', { name: 'Download & install', exact: true }).count(), 0, 'failed check does not retain an old download');
     state = 'current';
     await page.getByRole('button', { name: 'Check again', exact: true }).click();
     await page.getByText('You’re up to date with releases available for your computer.', { exact: true }).waitFor();
@@ -67,6 +76,13 @@ const url = process.env.APP_URL || 'http://127.0.0.1:18867';
     await page.getByText('You’re up to date with releases available for your computer.', { exact: true }).waitFor();
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'small window has no page overflow');
     await page.screenshot({ path: 'data/ui-review/update-current-small.png' });
+    await page.keyboard.press('Escape');
+    state = 'available';
+    await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Download & install', exact: true }).click();
+    await page.getByText('Downloading update · 45%', { exact: true }).waitFor();
+    await page.getByText('Installing and restarting…', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.nativeRestarts), 1, 'installer restarts once after staging');
     await page.keyboard.press('Escape');
     await page.unroute('**/api/updates');
     await page.route('**/api/updates', route => route.fulfill({ json: { ...info, desktop: false } }));

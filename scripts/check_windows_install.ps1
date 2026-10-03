@@ -13,7 +13,7 @@ $previousPort = $env:CONTOUR_DESKTOP_PORT
 $env:CONTOUR_DATA_DIR = $data
 $env:CONTOUR_DESKTOP_PORT = '18767'
 $app = $null
-$report = [ordered]@{ installed = $false; rendered = $false; draftRestored = $false; engine = $false; uninstalled = $false }
+$report = [ordered]@{ installed = $false; rendered = $false; draftRestored = $false; engine = $false; updateReplaced = $false; uninstalled = $false }
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -83,6 +83,34 @@ try {
     $engineReport = $output[-1] | ConvertFrom-Json
     if ($engineReport.status -ne 'ok') { throw 'The installed engine did not validate its STL/ZIP.' }
     $report.engine = $true
+
+    # Exercise the exact updater helper against the installed app, preserving its draft.
+    $updateTrial = Join-Path $trial 'Update helper'
+    New-Item -ItemType Directory -Force $updateTrial | Out-Null
+    $updateScript = Join-Path $updateTrial 'install.ps1'
+    python -c "from desktop.updater import WINDOWS_SCRIPT; from pathlib import Path; import sys; Path(sys.argv[1]).write_text(WINDOWS_SCRIPT)" $updateScript
+    $app = Start-Process -FilePath $executable -PassThru
+    Wait-Button $app 'Review & make' | Out-Null
+    $updatePlan = Join-Path $updateTrial 'plan.json'
+    @{ pid = $app.Id; target = $install; installer = $installer; folder = $updateTrial;
+       log = (Join-Path $trial 'update-install.log'); error = (Join-Path $trial 'update-error.txt') } |
+        ConvertTo-Json | Set-Content -Encoding UTF8 $updatePlan
+    $helper = Start-Process powershell.exe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$updateScript`"", "`"$updatePlan`"") -PassThru
+    Close-App $app
+    $app = $null
+    if (-not $helper.WaitForExit(240000)) { $helper.Kill(); throw 'The native update replacement timed out.' }
+    if (Test-Path (Join-Path $trial 'update-error.txt')) { throw (Get-Content (Join-Path $trial 'update-error.txt') -Raw) }
+    $deadline = [DateTime]::UtcNow.AddSeconds(90)
+    do {
+        $app = Get-Process -Name 'Contour Studio' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -eq $app) { Start-Sleep -Milliseconds 500 }
+    } while ($null -eq $app -and [DateTime]::UtcNow -lt $deadline)
+    if ($null -eq $app) { throw 'The updater did not relaunch the installed app.' }
+    Wait-Button $app 'Review & make' | Out-Null
+    $report.updateReplaced = $true
+    Close-App $app
+    $app = $null
+
 } finally {
     if ($null -ne $app -and -not $app.HasExited) { $app.Kill(); $app.WaitForExit() }
     $uninstaller = Join-Path $install 'unins000.exe'

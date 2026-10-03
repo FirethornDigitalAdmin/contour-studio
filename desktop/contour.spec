@@ -23,7 +23,7 @@ a = Analysis([str(root / 'desktop' / 'main.py')], pathex=[str(root)], binaries=b
              datas=assets, hiddenimports=hidden, hookspath=[], hooksconfig={'matplotlib': {'backends': ['Agg']}},
              excludes=['pytest', 'tkinter', 'PyQt5', 'PyQt6', 'PySide6', 'IPython', 'notebook'], noarchive=False)
 e = Analysis([str(root / 'desktop' / 'engine.py')], pathex=[str(root)], binaries=[],
-             datas=[], hiddenimports=['backend.worker', 'backend.buildings', 'backend.export', 'desktop.smoke'], hookspath=[],
+             datas=[], hiddenimports=['backend.worker', 'backend.buildings', 'backend.export', 'desktop.smoke', 'desktop.updater'], hookspath=[],
              excludes=['pytest', 'tkinter', 'IPython', 'notebook'], noarchive=False)
 pyz = PYZ(a.pure)
 epyz = PYZ(e.pure)

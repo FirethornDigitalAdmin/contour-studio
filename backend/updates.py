@@ -71,7 +71,8 @@ def select_release(releases, current=VERSION, filename=None):
             continue
         candidates.append((key, {'latest_version': release['tag_name'].removeprefix('v'),
             'release_notes': str(release.get('body') or '')[:20000],
-            'release_url': page, 'download_url': download}))
+            'release_url': page, 'download_url': download,
+            'download_sha256': next(((asset.get('digest') or '').removeprefix('sha256:') for asset in release.get('assets') or [] if asset.get('browser_download_url') == download), None)}))
     if not candidates:
         return {'status': 'current'}
     return {'status': 'available', **max(candidates, key=lambda candidate: candidate[0])[1]}

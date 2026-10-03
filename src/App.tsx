@@ -1223,7 +1223,7 @@ export default function App() {
       </dialog>
       <dialog ref={settingsDialog} className="help-dialog app-settings-dialog" aria-labelledby="app-settings-title" onClose={() => { setNavigation("studio"); settingsButton.current?.focus(); }} onClick={event => { if (event.target === event.currentTarget) settingsDialog.current?.close(); }}>
         <div className="panel-heading"><h2 id="app-settings-title">Settings</h2><button aria-label="Close settings" onClick={() => settingsDialog.current?.close()}><X size={20} /></button></div>
-        <section className="app-settings-section"><h3>App updates</h3><AppUpdates /><p className="hint">{hostedWorkspace ? "The browser workspace updates automatically. Get the latest desktop app from the release page." : "Check for the latest version of Contour Studio for your computer."}</p><a href={releaseUrl} target="_blank" rel="noopener noreferrer">Downloads & release notes <ExternalLink size={14} /></a></section>
+        <section className="app-settings-section"><h3>App updates</h3><AppUpdates busy={!!busy} /><p className="hint">{hostedWorkspace ? "The browser workspace updates automatically. Get the latest desktop app from the release page." : "Check for the latest version of Contour Studio for your computer."}</p><a href={releaseUrl} target="_blank" rel="noopener noreferrer">Downloads & release notes <ExternalLink size={14} /></a></section>
         <section className="app-settings-section"><h3>Help & support</h3><button onClick={() => { settingsDialog.current?.close(); helpDialog.current?.showModal(); }}><CircleHelp size={18} />How it works</button><CoffeeLink className="app-coffee-link" /></section>
       </dialog>
       <dialog

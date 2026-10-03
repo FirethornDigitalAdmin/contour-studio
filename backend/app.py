@@ -133,6 +133,8 @@ def layout(s:Settings):
 def generate(s:Settings):
     validate_marker_positions(s)
     with lock:
+        if getattr(app.state, 'update_installing', False):
+            raise HTTPException(409, 'An app update is being installed. Wait for the app to restart before generating.')
         if any(j['status'] in ('queued','running') for j in jobs.values()):
             raise HTTPException(409,'A model is already being generated. Wait for it to finish.')
         ident=str(uuid.uuid4())

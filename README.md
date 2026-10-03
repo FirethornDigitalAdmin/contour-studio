@@ -10,7 +10,7 @@ Turn a real place into a framed, tiled, 3D-printable relief map. Design your art
 
 The download website includes an interactive example made from a generated Bolton upon Dearne map. Its four terrain tiles and four separate frame pieces assemble on arrival. Rotate, pan, zoom, separate the pieces or switch the terrain colours off; the assembly can be replayed. The introduction waits until the model is in view and respects reduced-motion preferences. A static image remains available when WebGL cannot run.
 
-`public/showcase.glb` is a simplified display asset, not a print file. To rebuild it from a generated multicolour preview, install `trimesh` and `fast-simplification` in an asset-tooling environment, then run `python scripts/build-showcase.py PATH/TO/preview.glb`. This leaves the original print pack untouched. The example uses OpenStreetMap vectors and Mapzen terrain; source attribution is linked below the viewer.
+`public/showcase-v2.glb` preserves every triangle and float32 vertex position from the generated preview, with lossless mesh compression for downloading. Rebuild it using `pnpm build:showcase PATH/TO/preview.glb`. The builder verifies the decompressed vertices and oriented triangles against the source; `pnpm test` also checks every published surface is closed and consistently wound. The example uses OpenStreetMap vectors and Mapzen terrain; source attribution is linked below the viewer. Print files remain in the original print pack.
 
 ## Choose how to use it
 

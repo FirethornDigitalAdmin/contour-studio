@@ -3,6 +3,7 @@ import { Expand, Hand, LoaderCircle, Palette, Play, RotateCcw, Rotate3D } from "
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import "./hero-model.css";
 
 const palette: Record<string, string> = {
@@ -51,9 +52,9 @@ export default function HeroModel() {
     let animation: { from: number; to: number; duration: number; elapsed: number; last: number; camera: boolean } | null = null;
     const pieces: Piece[] = [];
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(34, 1, 1, 5000);
+    const camera = new THREE.PerspectiveCamera(34, 1, 10, 3000);
     let renderer: THREE.WebGLRenderer;
-    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
+    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); }
     catch { setStatus("error"); return () => abort.abort(); }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -212,10 +213,10 @@ export default function HeroModel() {
       reset() { stopAnimation(); cameraUnchanged = true; controls.reset(); fit(); },
       replay() { stopAnimation(); cameraUnchanged = true; pose(1); fit(); animate(0, 2400, true, 550); },
     };
-    fetch("./showcase.glb", { signal: abort.signal }).then((response) => {
+    fetch("./showcase-v2.glb", { signal: abort.signal }).then((response) => {
       if (!response.ok) throw new Error("Model unavailable");
       return response.arrayBuffer();
-    }).then((bytes) => new GLTFLoader().parseAsync(bytes, "")).then((gltf) => {
+    }).then((bytes) => new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes, "")).then((gltf) => {
       if (disposed || broken) { disposeTree(gltf.scene); return; }
       model = gltf.scene;
       model.rotation.x = -Math.PI / 2; model.position.set(-200, 0, 140);
@@ -227,7 +228,7 @@ export default function HeroModel() {
         const original = Array.isArray(child.material) ? child.material : [child.material];
         original.forEach((material) => material.dispose());
         const material = new THREE.MeshStandardMaterial({ color: palette[match[4]], roughness: 0.9, metalness: 0, flatShading: true });
-        child.material = material; child.castShadow = true; child.receiveShadow = true;
+        child.material = material; child.castShadow = match[4] === "ground" || frame; child.receiveShadow = false;
         pieces.push({ mesh: child, origin: child.position.clone(), region: match[4], material,
           offset: new THREE.Vector3((column - 0.5) * (frame ? 140 : 74), (row - 0.5) * (frame ? 140 : 74), frame ? 12 : 28) });
       });
@@ -270,6 +271,6 @@ export default function HeroModel() {
       <p id={instructionsId} className="hero-model-instructions">Drag to {drag === "rotate" ? "rotate" : "pan"} · Scroll or pinch to zoom<span className="hero-model-keyboard">. Keyboard: arrows rotate, Shift + arrows pan, + / − zoom, R resets.</span></p>
       <span className="hero-model-announcement" role="status">{status === "error" ? "3D preview unavailable. Downloads are still available." : ready ? assembling ? "Assembling the example map" : "Interactive map ready" : "Loading interactive map"}</span>
     </div>
-    <figcaption>Real generated map · Simplified for web preview<span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener noreferrer">Mapzen terrain credits</a></span></figcaption>
+    <figcaption>Real generated map · Explore the actual model<span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener noreferrer">Mapzen terrain credits</a></span></figcaption>
   </figure>;
 }

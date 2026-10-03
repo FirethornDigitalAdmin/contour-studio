@@ -29,6 +29,7 @@ import {
   Monitor,
   ExternalLink,
   Github,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import CoffeeLink from "./CoffeeLink";
 import AppUpdates from "./AppUpdates";
@@ -108,6 +109,10 @@ export default function App() {
   const searchVersion = useRef(0);
   const draftSnapshot = useRef<string | null>(null);
   draftSnapshot.current = settings ? JSON.stringify({ version: 1, settings, jobId: job?.id, step, view, mapRatioLocked }) : null;
+  const [navigation, setNavigation] = useState("studio");
+  const settingsDialog = useRef<HTMLDialogElement>(null);
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  const filesButton = useRef<HTMLButtonElement>(null);
   const helpDialog = useRef<HTMLDialogElement>(null);
   const creatorDialog = useRef<HTMLDialogElement>(null);
   const creatorCredit = useRef<HTMLButtonElement>(null);
@@ -530,6 +535,11 @@ export default function App() {
     seconds = elapsed % 60;
   return (
     <div className="app-shell">
+      <nav className="app-navigation" aria-label="Main navigation">
+        <button className={`app-nav-item${navigation === "studio" ? " active" : ""}`} aria-label="Studio" aria-current={navigation === "studio" ? "page" : undefined} title="Studio" onClick={() => { document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close()); setNavigation("studio"); }}><BrandMark size={30} /><span>Studio</span></button>
+        <button ref={filesButton} className={`app-nav-item${navigation === "files" ? " active" : ""}`} aria-label="Files" aria-haspopup="dialog" title="Files" disabled={busy} onClick={() => { setNavigation("files"); projectDialog.current?.showModal(); void refreshProjects(); }}><FolderOpen size={23} /><span>Files</span></button>
+        <button ref={settingsButton} className={`app-nav-item app-nav-settings${navigation === "settings" ? " active" : ""}`} aria-label="Settings" aria-haspopup="dialog" title="Settings" onClick={() => { setNavigation("settings"); settingsDialog.current?.showModal(); }}><SettingsIcon size={23} /><span>Settings</span></button>
+      </nav>
       <header className="header">
         <div className="app-brand-block">
         <a
@@ -565,21 +575,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="header-tools">
-        <AppUpdates />
-        <CoffeeLink className="app-coffee-link" />
-        <button className="help-button" aria-label="How it works" title="How it works" onClick={() => helpDialog.current?.showModal()}><CircleHelp size={19} /><span>Help</span></button>
-        <button
-          className="projects-button"
-          aria-label={hostedWorkspace ? "Print locally" : "My projects"}
-          title={hostedWorkspace ? "Print locally" : "My projects"}
-          disabled={busy}
-          onClick={() => { if (hostedWorkspace) helpDialog.current?.showModal(); else { projectDialog.current?.showModal(); void refreshProjects(); } }}
-        >
-          <FolderOpen size={18} />
-          <span>{hostedWorkspace ? "Print locally" : "My projects"}</span>
-        </button>
-        </div>
       </header>
       {hostedWorkspace && <div className="hosting-note"><Monitor size={15} /><span>Design here. Generate and print on your computer.</span><button onClick={() => helpDialog.current?.showModal()}>How it works <ArrowRight size={14} /></button></div>}
       <div className="workspace" id="workspace">
@@ -1226,7 +1221,13 @@ export default function App() {
         </section>
         <button className="help-creator-link" onClick={() => { helpDialog.current?.close(); creatorDialog.current?.showModal(); }}>Meet Louis, the maker of Contour Studio<ArrowRight size={17} aria-hidden="true" /></button>
       </dialog>
+      <dialog ref={settingsDialog} className="help-dialog app-settings-dialog" aria-labelledby="app-settings-title" onClose={() => { setNavigation("studio"); settingsButton.current?.focus(); }} onClick={event => { if (event.target === event.currentTarget) settingsDialog.current?.close(); }}>
+        <div className="panel-heading"><h2 id="app-settings-title">Settings</h2><button aria-label="Close settings" onClick={() => settingsDialog.current?.close()}><X size={20} /></button></div>
+        <section className="app-settings-section"><h3>App updates</h3><AppUpdates /><p className="hint">{hostedWorkspace ? "The browser workspace updates automatically. Get the latest desktop app from the release page." : "Check for the latest version of Contour Studio for your computer."}</p><a href={releaseUrl} target="_blank" rel="noopener noreferrer">Downloads & release notes <ExternalLink size={14} /></a></section>
+        <section className="app-settings-section"><h3>Help & support</h3><button onClick={() => { settingsDialog.current?.close(); helpDialog.current?.showModal(); }}><CircleHelp size={18} />How it works</button><CoffeeLink className="app-coffee-link" /></section>
+      </dialog>
       <dialog
+        onClose={() => { setNavigation("studio"); filesButton.current?.focus(); }}
         ref={projectDialog}
         className="projects-dialog"
         aria-labelledby="projects-title"
@@ -1237,7 +1238,7 @@ export default function App() {
         <div className="panel-heading">
           <div>
             <span className="eyebrow">ON THIS COMPUTER</span>
-            <h2 id="projects-title">My projects</h2>
+            <h2 id="projects-title">Files</h2>
           </div>
           <button
             aria-label="Close projects"

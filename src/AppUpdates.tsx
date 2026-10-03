@@ -44,8 +44,8 @@ export default function AppUpdates() {
   }, [update?.desktop]);
   if (!update?.desktop) return null;
   return <>
-    <button ref={button} className={`help-button update-button${update.status === "available" ? " has-update" : ""}`} aria-label={update.status === "available" ? "Update available" : "Updates"} onClick={() => void check(true)} title="Check for updates">
-      <RefreshCw size={18} /><span>{update.status === "available" ? "Update available" : "Updates"}</span>
+    <button ref={button} className={`help-button update-button${update.status === "available" ? " has-update" : ""}`} aria-label={update.status === "available" ? "Update available" : "Check for updates"} onClick={() => void check(true)} title="Check for updates">
+      <RefreshCw size={18} /><span>{update.status === "available" ? "Update available" : "Check for updates"}</span>
     </button>
     <dialog ref={dialog} className="help-dialog update-dialog" aria-labelledby="update-title" onClose={() => button.current?.focus()} onClick={e => { if (e.target === e.currentTarget) dialog.current?.close(); }}>
       <div className="panel-heading"><h2 id="update-title">App updates</h2><button aria-label="Close updates" onClick={() => dialog.current?.close()}><X size={20} /></button></div>

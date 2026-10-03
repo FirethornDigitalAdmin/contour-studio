@@ -7,6 +7,7 @@ import "./style.css";
 import "./workspace.css";
 import "./desktop-ui.css";
 import "./support.css";
+import "./navigation.css";
 
 function Entry() {
   const [workspace, setWorkspace] = useState(!hostedWorkspace || window.location.hash === "#workspace");

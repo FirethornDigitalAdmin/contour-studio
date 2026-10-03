@@ -7,7 +7,7 @@ export const creator = {
   twitterUrl: "https://twitter.com/imloulou",
   portfolioUrl: "https://louisgoldsbrough.co.uk/",
 };
-export const releaseTag = "v1.0.0-rc.4";
+export const releaseTag = "v1.0.0-rc.5";
 export const releaseUrl = `${repository}/releases/tag/${releaseTag}`;
 export const downloadUrl = (filename: string) =>
   ["Contour-Studio-local.zip", "Contour-Studio-source.zip"].includes(filename)

@@ -26,11 +26,11 @@ The app is completely free and open source. The toolbar and Help panel link to [
 
 ## Remote update notifications
 
-Version 1.0.0-rc.4 includes **Settings → Check for updates** and the native **Check for Updates…** menu command. Updates are checked at launch. **Download & install** downloads the matching installer inside the app, verifies its SHA-256 against GitHub's release asset metadata, prepares the replacement, closes the current app and restarts the updated version. Completed projects, caches and saved drafts stay in the separate user-data folder.
+Version 1.0.0-rc.5 includes **Settings → Check for updates** and the native **Check for Updates…** menu command. Updates are checked at launch. **Download & install** downloads the matching installer inside the app, verifies its SHA-256 against GitHub's release asset metadata, prepares the replacement, closes the current app and restarts the updated version. Completed projects, caches and saved drafts stay in the separate user-data folder.
 
 Finish model generation before updating. New generation is held while an update is being prepared. Failed downloads leave the installed app untouched; Mac replacement keeps the previous app until the replacement is launched and restores it if the swap or launch command fails. The Mac app must be installed in a writable location rather than running from a mounted disk image. Windows uses the existing per-user installer in silent mode, preserves the install location and restarts the app after successful setup. Installation failures show a diagnostic path.
 
-Versions older than rc.4 do not contain the replacement helper and require one initial upgrade to rc.4. Subsequent updates use the in-app installation flow. Browser-only users use the release-page download. Community builds remain unsigned and are not notarised.
+Versions older than rc.5 do not contain the replacement helper and require one initial upgrade to rc.5. Subsequent updates use the in-app installation flow. Browser-only users use the release-page download. Community builds remain unsigned and are not notarised.
 
 Offline startup still works. A failed background check stays quiet; a manual check offers a readable error and retry. Preview versions receive newer previews or stable releases; stable versions receive only stable releases. Draft releases and releases without the matching uploaded installer are ignored. No projects, locations or settings are sent to GitHub.
 

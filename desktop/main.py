@@ -102,7 +102,7 @@ def run_application(data_root):
         updater = UpdateBridge(data_root, generation_busy, release_update)
         window = webview.create_window('Contour Studio', f'http://127.0.0.1:{port}', **window_options(),
                               background_color='#fcfbf7', confirm_close=False, text_select=True, js_api=updater)
-        updater.window = window
+        updater._window = window
         from desktop.menus import studio_menu
         webview.start(menu=studio_menu(window), private_mode=False, storage_path=str(data_root / 'browser'), **browser_options)
     finally:

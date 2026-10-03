@@ -96,3 +96,11 @@ def test_installation_reservation_blocks_new_models(monkeypatch):
         assert 'update' in response.json()['detail']
     finally:
         app.state.update_installing = False
+
+
+def test_native_bridge_exports_only_the_three_update_actions(tmp_path):
+    bridge = updater.UpdateBridge(tmp_path, lambda: False)
+    # pywebview recursively exports public attributes; a native window must stay private.
+    bridge._window = Mock()
+    public = {name for name in dir(bridge) if not name.startswith('_')}
+    assert public == {'install_update', 'restart_for_update', 'update_status'}

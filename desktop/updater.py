@@ -111,6 +111,7 @@ def wait_for_exit(pid, timeout=90):
 
 WINDOWS_SCRIPT = r'''param([string]$PlanPath)
 $ErrorActionPreference = 'Stop'
+$env:PYINSTALLER_RESET_ENVIRONMENT = '1'
 $plan = Get-Content -LiteralPath $PlanPath -Raw | ConvertFrom-Json
 try {
   if ($plan.ready) { 'ready' | Set-Content -LiteralPath $plan.ready }
@@ -131,29 +132,29 @@ try {
 
 class UpdateBridge:
     def __init__(self, data_root, busy, release_reservation=lambda: None):
-        self.root = data_root
+        self._root = data_root
         self._busy = busy
         self._release_reservation = release_reservation
-        self.window = None
-        self.state = {'status': 'idle'}
-        self.lock = threading.Lock()
-        self.plan = None
+        self._window = None
+        self._state = {'status': 'idle'}
+        self._lock = threading.Lock()
+        self._plan = None
 
     def update_status(self):
-        with self.lock:
-            return dict(self.state)
+        with self._lock:
+            return dict(self._state)
 
     def _set(self, **values):
-        with self.lock:
-            self.state = values
+        with self._lock:
+            self._state = values
 
     def install_update(self):
-        with self.lock:
-            if self.state['status'] in ('downloading', 'preparing', 'ready', 'installing'):
-                return dict(self.state)
+        with self._lock:
+            if self._state['status'] in ('downloading', 'preparing', 'ready', 'installing'):
+                return dict(self._state)
             if self._busy():
                 return {'status': 'error', 'message': 'Finish model generation before installing an update.'}
-            self.state = {'status': 'downloading', 'progress': 0}
+            self._state = {'status': 'downloading', 'progress': 0}
         threading.Thread(target=self._prepare, daemon=True).start()
         return self.update_status()
 
@@ -169,14 +170,14 @@ class UpdateBridge:
                 self._release_reservation()
                 self._set(status='current', message='You’re up to date.')
                 return
-            folder = self.root / 'updates' / uuid.uuid4().hex
+            folder = self._root / 'updates' / uuid.uuid4().hex
             folder.mkdir(parents=True)
             installer = folder / installer_name()
             download_verified(release['download_url'], release.get('download_sha256'), installer,
                               lambda value: self._set(status='downloading', progress=value))
             self._set(status='preparing', message='Verifying and preparing the new app…')
             candidate = stage_mac(installer, folder, release['latest_version']) if sys.platform == 'darwin' else None
-            self.plan = {'pid': os.getpid(), 'target': str(target), 'candidate': str(candidate) if candidate else None,
+            self._plan = {'pid': os.getpid(), 'target': str(target), 'candidate': str(candidate) if candidate else None,
                          'installer': str(installer), 'folder': str(folder), 'log': str(folder / 'install.log'),
                          'error': str(folder / 'error.txt'), 'ready': str(folder / 'helper-ready')}
             self._set(status='ready', message='Ready to install and restart.')
@@ -188,13 +189,13 @@ class UpdateBridge:
             self._set(status='error', message=str(exc))
 
     def restart_for_update(self):
-        with self.lock:
-            if self.state['status'] != 'ready' or not self.plan:
+        with self._lock:
+            if self._state['status'] != 'ready' or not self._plan:
                 return {'status': 'error', 'message': 'Download the update before installing it.'}
             if self._busy():
                 return {'status': 'error', 'message': 'Finish model generation before installing an update.'}
-            self.state = {'status': 'installing', 'message': 'Installing and restarting…'}
-            plan = dict(self.plan)
+            self._state = {'status': 'installing', 'message': 'Installing and restarting…'}
+            plan = dict(self._plan)
         try:
             folder = Path(plan['folder'])
             path = folder / 'plan.json'
@@ -213,7 +214,7 @@ class UpdateBridge:
                 time.sleep(.1)
             if not Path(plan['ready']).exists():
                 raise RuntimeError('The installation helper could not start. The current app has not been changed.')
-            threading.Timer(.75, self.window.destroy).start()
+            threading.Timer(.75, self._window.destroy).start()
             return self.update_status()
         except Exception as exc:
             self._release_reservation()

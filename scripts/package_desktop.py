@@ -36,25 +36,28 @@ def main():
             subprocess.run(['hdiutil', 'attach', str(writable), '-mountpoint', str(mount),
                             '-nobrowse'], check=True)
             try:
-                script = f'''tell application "Finder"
-                    set installerFolder to POSIX file "{mount}" as alias
-                    open installerFolder
-                    set installerWindow to container window of installerFolder
-                    set current view of installerWindow to icon view
-                    set toolbar visible of installerWindow to false
-                    set statusbar visible of installerWindow to false
-                    set bounds of installerWindow to {{200, 160, 840, 540}}
-                    set viewOptions to icon view options of installerWindow
-                    set arrangement of viewOptions to not arranged
-                    set icon size of viewOptions to 96
-                    set background picture of viewOptions to file ".background:installer.png" of installerFolder
-                    set position of item "Contour Studio.app" of installerFolder to {{160, 130}}
-                    set position of item "Applications" of installerFolder to {{470, 130}}
-                    update installerFolder without registering applications
-                    delay 2
-                    close installerWindow
-                end tell'''
-                subprocess.run(['osascript', '-e', script], check=True)
+                from ds_store import DSStore
+                from mac_alias import Alias
+                # Write the layout directly so builds do not depend on Finder's cache.
+                with DSStore.open(str(mount / '.DS_Store'), 'w+') as layout:
+                    layout['.']['bwsp'] = {
+                        'ShowStatusBar': False, 'ShowToolbar': False,
+                        'ShowTabView': False, 'ShowSidebar': False,
+                        'ContainerShowSidebar': False,
+                        'WindowBounds': '{{200, 160}, {640, 380}}',
+                    }
+                    layout['.']['icvp'] = {
+                        'viewOptionsVersion': 1, 'backgroundType': 2,
+                        'backgroundImageAlias': Alias.for_file(str(mount / '.background' / 'installer.png')).to_bytes(),
+                        'iconSize': 96.0, 'textSize': 12.0,
+                        'gridSpacing': 100.0, 'gridOffsetX': 0.0, 'gridOffsetY': 0.0,
+                        'arrangeBy': 'none', 'labelOnBottom': True,
+                        'showItemInfo': False, 'showIconPreview': True,
+                    }
+                    layout['.']['vstl'] = ('type', b'icnv')
+                    layout['Contour Studio.app']['Iloc'] = (160, 130)
+                    layout['Applications']['Iloc'] = (470, 130)
+
             finally:
                 subprocess.run(['hdiutil', 'detach', str(mount)], check=True)
             subprocess.run(['hdiutil', 'convert', str(writable), '-ov', '-format', 'UDZO',

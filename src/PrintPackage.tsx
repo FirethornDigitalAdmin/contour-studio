@@ -12,7 +12,7 @@ import {
   Palette,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Model, Part } from "./types";
+import { api, type Model, type Part } from "./types";
 import "./preview.css";
 export default function PrintPackage({
   jobId,
@@ -27,6 +27,23 @@ export default function PrintPackage({
   onSelect: (id: string | null) => void;
   stale: boolean;
 }) {
+  const [bambuBusy, setBambuBusy] = useState(false);
+  const [bambuMessage, setBambuMessage] = useState("");
+  const [bambuFiles, setBambuFiles] = useState<string[]>(model.bambu?.files || []);
+  async function openBambu(launch = true) {
+    setBambuBusy(true); setBambuMessage("");
+    try {
+      const result = await api<{ files: string[]; plate_count: number }>(`/projects/${encodeURIComponent(jobId)}/bambu?launch=${launch}`, {});
+      setBambuFiles(result.files);
+      setBambuMessage(launch ? `Sent ${result.plate_count} plates to Bambu Studio. Select your printer and filaments, check the purge tower space, then Slice all plates.` : `${result.plate_count} plates prepared. Download the project below.`);
+    } catch (error) {
+      setBambuMessage(error instanceof Error ? error.message : "Could not open Bambu Studio.");
+      if (!bambuFiles.length && launch) {
+        try { const result = await api<{ files: string[] }>(`/projects/${encodeURIComponent(jobId)}/bambu`, {}); setBambuFiles(result.files); } catch { /* Keep the original actionable error. */ }
+      }
+    } finally { setBambuBusy(false); }
+  }
+  useEffect(() => { setBambuFiles(model.bambu?.files || []); setBambuMessage(""); }, [jobId, model.bambu]);
   const chosen = model.parts.find((p) => p.id === selected);
   const frameFit = model.model.frame_fit;
   const fileUrl = (file: string) => `/api/files/${encodeURIComponent(jobId)}/${file.split("/").map(encodeURIComponent).join("/")}`;
@@ -63,11 +80,17 @@ export default function PrintPackage({
           <span className="eyebrow">PRINT PACKAGE</span>
           <h3>Everything you need to make it.</h3>
         </div>
+        <div className="package-actions">
+        <button type="button" className="primary" disabled={bambuBusy} onClick={() => openBambu()}><Printer size={16} />{bambuBusy ? "Preparing plates…" : "Open in Bambu Studio"}</button>
         <a className="text-link package-download" download href={fileUrl("project.zip")}>
           <Download size={16} />
           Download ZIP
         </a>
+        </div>
       </div>
+      <p className="package-help">Open all pieces on prepared plates, with colours and required quantities included. Choose your printer and filament profiles in Bambu Studio, check purge tower space, then slice all plates.{stale && " Rebuild to include your latest changes."}</p>
+      {bambuMessage && <p className="package-help" role="status">{bambuMessage}</p>}
+      <div className="bambu-downloads">{bambuFiles.map((file, index) => <a key={file} download href={fileUrl(file)}><Download size={14} />Download plate project{bambuFiles.length > 1 ? ` ${index + 1} of ${bambuFiles.length}` : ""}</a>)}{!bambuFiles.length && <button type="button" disabled={bambuBusy} onClick={() => openBambu(false)}>Prepare downloadable plate project</button>}</div>
       <div className="package-overview">
         <span><Box size={15} /><strong>{physicalPieces}</strong> physical {physicalPieces === 1 ? "piece" : "pieces"} · {model.parts.length} {multicolour ? "solid " : ""}STL {model.parts.length === 1 ? "file" : "files"}</span>
         <span className={checked === model.parts.length ? "valid" : "invalid"}>{checked === model.parts.length ? <Check size={15} /> : <TriangleAlert size={15} />}{checked}/{model.parts.length} meshes watertight</span>
@@ -101,7 +124,7 @@ export default function PrintPackage({
           </li>)}
         </ol>
         <div className="bambu-instructions">
-          <strong>Open one colour 3MF per print piece.</strong>
+          <strong>For individual downloads, open one colour 3MF per piece.</strong>
           <p>Keep it as one object with named material parts. Choose your printer, assign those parts to the filaments loaded in your AMS, then slice and check the layer preview. Filament numbers here are suggestions; match them to your own setup. Reuse a filament across regions if you have fewer colours available.</p>
           <details><summary>Using the material STLs instead</summary><p>Select all STLs from one piece’s Materials folder together and import them as one object with multiple parts. Keep their relative positions. Assign the named parts to your loaded filaments; arranging or dropping each region separately loses the alignment.</p></details>
         </div>

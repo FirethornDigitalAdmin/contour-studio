@@ -10,8 +10,8 @@ Use the installer matching your computer. Windows x64 and Apple Silicon candidat
 
 | Computer | File | Install |
 | --- | --- | --- |
-| Apple Silicon Mac | `Contour-Studio-macOS-arm64.dmg` | Open the disk image. Its installation window shows Contour Studio on the left, an arrow in the middle and Applications on the right. Drag the app onto Applications, then open it from Applications. |
-| Intel Mac | `Contour-Studio-macOS-x86_64.dmg` | Open the disk image. Its installation window shows Contour Studio on the left, an arrow in the middle and Applications on the right. Drag the app onto Applications, then open it from Applications. |
+| Apple Silicon Mac | `Contour-Studio-macOS-arm64.dmg` | Open the disk image, drag Contour Studio to Applications, then open it. |
+| Intel Mac | `Contour-Studio-macOS-x86_64.dmg` | Open the disk image, drag Contour Studio to Applications, then open it. |
 | Windows x64 | `Contour-Studio-Windows-x64-Setup.exe` | Run the installer, then open Contour Studio from the Start menu. |
 
 Python and Node.js are included or unnecessary for installed users. Internet is needed for map search, the basemap and uncached geographic data. Windows x64 requires Windows 10 or later. Setup checks for Microsoft WebView2, installs it only if missing, and verifies it before continuing. Stay connected to the internet for this step. If setup reports that WebView2 could not be installed, check the connection and retry; you can also install the [WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) directly, then retry setup. Existing runtimes are detected using [Microsoft's documented registry locations](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed).
@@ -23,6 +23,21 @@ Closing the app stops any active generation. Completed projects remain available
 ## Optional thank you
 
 The app is completely free and open source. The toolbar and Help panel link to [Buy Me a Coffee](https://www.buymeacoffee.com/LouisGoldsbrough). This is an optional thank you: downloads and every feature are available without donating.
+
+## Remote update notifications
+
+The next installer build (1.0.0-rc.2) includes an **Updates** button and a native **Check for Updates…** command. On Mac, use **Contour Studio → Check for Updates…**; on Windows, use the **Contour Studio** menu. The custom **Studio** menu opens Place, Design, Make and My Projects, and saves or imports design settings. **Help → How It Works** opens the same guide as the toolbar. The standard Mac Edit and View menus stay available. It checks GitHub Releases in the background at launch. When a newer release has a complete installer for this computer, the button changes to **Update available**. Clicking it checks again and shows the release notes and **Download update**. Downloads open in the system browser; installation is manual. Finish active generation and close Contour Studio before running the Windows installer or replacing the Mac app in Applications. Projects, caches and browser drafts remain in the separate user-data folder.
+
+Offline startup still works. A failed background check stays quiet; a manual check offers a readable error, retry and a link to all releases. Preview versions receive newer previews or stable releases; stable versions receive only stable releases. Draft releases and releases without the matching uploaded installer are ignored. Existing public-preview users must install this version manually once to gain update notifications. It does not provide automatic installation or code signing.
+
+To distribute future updates:
+
+1. Set the release identity in `desktop/version.py` (for example `1.0.0-rc.3`, then `1.0.0` for stable). Keep the local default in `desktop/windows.iss` aligned; GitHub's Windows build reads the Python identity automatically.
+2. Build and verify each supported platform through the desktop workflow. Mac bundle versions use the numeric part; the app displays and compares the full release identity.
+3. Create a GitHub Release in `FirethornDigitalAdmin/contour-studio` with the matching tag (for example `v1.0.0-rc.3`) and release notes. Attach `Contour-Studio-Windows-x64-Setup.exe` and/or `Contour-Studio-macOS-arm64.dmg` / `Contour-Studio-macOS-x86_64.dmg`. Publish previews as prereleases. Only publish Intel installers after testing that platform.
+4. Publish the release after the installers are attached. Apps discover it on their next launch or manual check. Updates replace the whole app, including the geometry engine.
+
+Release checks make an unauthenticated HTTPS request to GitHub with the app version in its User-Agent. No projects, locations or settings are sent. Download links are limited to this repository's GitHub release assets. GitHub availability and public API rate limits can temporarily prevent checking; manual downloads remain available.
 
 ## Projects and updates
 

@@ -239,7 +239,7 @@ def test_separate_frame_lip_supports_clearanced_insert_and_rear_keys(radius,join
     terrain=union([p['solid'] for p in parts if p['kind']=='terrain'])
     frame=union([p['solid'] for p in parts if p['kind']=='frame'])
     fit=meta['frame_fit']; fw=s.frame_width
-    assert meta['geometry_revision']=='supported-edges-frame-lip-v3'
+    assert meta['geometry_revision']=='flat-colour-depth-v5'
     assert fit=={'lip_width_mm':2.0,'lip_height_mm':2.0,'clearance_mm':s.tolerance,'seat_angle_degrees':45,'assembly':'chamfered-insert'}
     assert (terrain^frame).volume()<1e-7
     # Away from a key, frame and insert share the same 45-degree seat.

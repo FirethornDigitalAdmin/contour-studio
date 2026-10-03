@@ -222,7 +222,7 @@ def assembly_svg(s,meta,parts):
     if has_keys:
         steps.append('Print Fit_Left, Fit_Right and one Joining_key. Check the fit before printing tiles.')
     if s.multicolour:
-        steps.append('For colour printing, open one Multicolour 3MF piece at a time. Follow Multicolour/readme.txt for filament and AMS mapping.')
+        steps.append('For all plates together, open Bambu/Print-plates-1.3mf as a project (include subsequent numbered projects if present). For an individual piece, use its Multicolour 3MF. Follow Multicolour/readme.txt for filament and AMS mapping.')
         steps.append('The main monochrome STLs print flat side down. Material STLs are colour parts: import them together, preserving their offsets.')
     else:
         steps.append('Print each STL flat side down. A 0.2 mm layer height is a useful starting point.')
@@ -391,7 +391,7 @@ def build_project(s, folder:Path, progress, data_override=None):
     if s.multicolour:
         filament_count = len({m['filament'] for m in palette})
         instructions = [
-            'Print one Multicolour/*.3mf tile or frame piece at a time. Each file contains one object with named material parts in millimetres.',
+            'Open Bambu/Print-plates-*.3mf as projects for prepared plates containing every piece and the required copies of keys. Alternatively, open one Multicolour/*.3mf tile or frame piece at a time.',
             f'Create {filament_count} filament entries in Bambu Studio matching the numbered colours in materials.json. Identical colours share one filament number.',
             'Some Bambu Studio versions show "invalid config, load geometry data only" for standard 3MF files. Accept geometry-only import; these files intentionally carry no printer profile.',
             f'If Standard 3MF Import Color appears, choose {filament_count} colours to keep the palette instead of automatic colour grouping. Check the resulting colours and named parts.',
@@ -413,6 +413,8 @@ def build_project(s, folder:Path, progress, data_override=None):
             material_lines.append(f'Filament {filament}: {" + ".join(m["name"] for m in group)} · {group[0]["colour"]}')
         (folder / readme_file).write_text('CONTOUR STUDIO · MULTICOLOUR PRINTING\n\n' + '\n'.join(material_lines) + '\n\n' + '\n\n'.join(f'{i}. {line}' for i, line in enumerate(instructions, 1)) + '\n', encoding='utf-8')
         multicolour_files.extend([manifest_file, readme_file])
+    from .bambu import prepare_project
+    info['bambu'] = prepare_project(folder, info)
     (folder/'model-info.json').write_text(json.dumps(info,indent=2), encoding='utf-8')
     (folder/'settings.json').write_text(s.model_dump_json(indent=2), encoding='utf-8')
     credits = ['Map features: © OpenStreetMap contributors, ODbL 1.0.',
@@ -437,7 +439,7 @@ def build_project(s, folder:Path, progress, data_override=None):
     # must never see a partial project.zip after a disk or compression failure.
     temporary=folder/'.project.zip.tmp'
     try:
-        files=[p['file'] for p in results]+multicolour_files+['preview.glb','Assembly.3mf','assembly-guide.svg',
+        files=[p['file'] for p in results]+multicolour_files+info['bambu']['files']+['Bambu/plates.json']+['preview.glb','Assembly.3mf','assembly-guide.svg',
                                            'model-info.json','settings.json','data-sources.txt']
         with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as archive:
             for file in sorted(files):

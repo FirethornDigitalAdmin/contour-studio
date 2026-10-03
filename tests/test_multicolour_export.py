@@ -10,7 +10,7 @@ from shapely.geometry import LineString, box
 
 import backend.export as exporter
 from backend.config import Settings
-from backend.geometry import as_trimesh
+from backend.geometry import as_trimesh, generate_solids
 
 NS = {'m': exporter.CORE_NS, 'c': exporter.MATERIAL_NS}
 
@@ -219,7 +219,8 @@ def test_stl_reload_volume_change_never_publishes_pack(tmp_path, monkeypatch, ma
 
 
 @pytest.mark.parametrize('frame_mode', ['integrated', 'separate', 'none'])
-def test_actual_terrain_materials_export_for_every_frame_mode(tmp_path, frame_mode):
+@pytest.mark.parametrize('terrain_style', ['smooth', 'sculpted', 'faceted', 'terraced'])
+def test_actual_terrain_materials_export_for_every_frame_mode(tmp_path, frame_mode, terrain_style):
     def source(xs, ys, geo):
         dem = np.add.outer(np.sin(ys / 8) * 10, np.cos(xs / 7) * 9)
         return dem, [('forest', box(5, 5, 55, 95), {}), ('field', box(65, 5, 115, 95), {}),
@@ -227,7 +228,7 @@ def test_actual_terrain_materials_export_for_every_frame_mode(tmp_path, frame_mo
                      ('road', LineString([(60, 5), (60, 95)]), {}),
                      ('building', box(75, 20, 85, 30), {'height': '8'})]
     s = Settings(name='Test terrain', bounds=FIXTURE_BOUNDS, width=120, height=100, resolution=64, frame_mode=frame_mode,
-                 layout='manual', columns=2, rows=1, forests=True, fields=True, multicolour=True,
+                 layout='manual', columns=2, rows=1, forests=True, fields=True, multicolour=True, terrain_style=terrain_style,
                  colour_ground='#D9D3B9', colour_fields='#D9D3B9', colour_roads='#D9D3B9',
                  colour_buildings='#D9D3B9', colour_markers='#2B4045')
     info = exporter.build_project(s, tmp_path, quiet, source)
@@ -239,3 +240,62 @@ def test_actual_terrain_materials_export_for_every_frame_mode(tmp_path, frame_mo
         for material in tile['materials']:
             mesh = trimesh.load_mesh(tmp_path / material['file'])
             assert mesh.is_watertight and mesh.is_volume
+
+
+@pytest.mark.parametrize('terrain_style', ['smooth', 'sculpted', 'faceted', 'terraced'])
+@pytest.mark.parametrize('depth', [.4, .8, 2])
+def test_hill_colour_stays_near_surface_and_preserves_complete_solid(terrain_style, depth):
+    s = Settings(width=120, height=100, resolution=64, frame_mode='none', labels=False, joints=False,
+                 roads='none', water=False, buildings=False, multicolour=True, smoothing=0,
+                 terrain_style=terrain_style, colour_depth=depth)
+    def hillside(xs, ys, geo):
+        dem = np.tile(xs * .1 / (geo.scale * s.exaggeration), (len(ys), 1))
+        return dem, [('forest', box(-1, -1, 121, 101), {})]
+    parts, _ = generate_solids(s, quiet, hillside)
+    part = parts[0]
+    regions = exporter.validated_material_regions(part, stl_origin=np.zeros(3))
+    forest = regions['forest']
+    # A flat core would bury roughly 6 mm of colour on this 12 mm hill.
+    # Terrace risers need a lateral shell as well as their coloured shelves.
+    assert part['colour_core'] == 'surface-following'
+    assert forest.volume() < s.width * s.height * (depth + 1)
+    assert forest.slice(1.8).is_empty()
+    assert forest.slice(4).area() < s.width * s.height * .25
+    monochrome, _ = generate_solids(s.model_copy(update={'multicolour': False}), quiet, hillside)
+    assert part['solid'].volume() == pytest.approx(monochrome[0]['solid'].volume(), abs=.001)
+
+
+@pytest.mark.parametrize('water_style', ['carved', 'smooth'])
+@pytest.mark.parametrize('roads', ['raised', 'engraved'])
+def test_surface_colour_exports_recesses_banks_and_equal_depths(tmp_path, water_style, roads):
+    s = Settings(width=120, height=100, resolution=64, frame_mode='none', labels=False, joints=False,
+                 multicolour=True, water_style=water_style, water_bank=1, roads=roads,
+                 road_height=.8, water_depth=.8, colour_depth=.8)
+    def crossing(xs, ys, geo):
+        dem = np.add.outer(np.sin(ys / 8) * 10, np.cos(xs / 7) * 9)
+        return dem, [('forest', box(5, 5, 115, 95), {}),
+                     ('water', LineString([(-5, 50), (125, 50)]), {}),
+                     ('road', LineString([(60, -5), (60, 105)]), {})]
+    info = exporter.build_project(s, tmp_path, quiet, crossing)
+    assert info['parts'][0]['watertight']
+
+
+def test_unrepresentable_surface_colour_uses_validated_level_core(monkeypatch):
+    import backend.geometry as geometry
+    convert = geometry.as_trimesh
+    failed = False
+    def reject_once(solid, **kwargs):
+        nonlocal failed
+        if kwargs.get('ensure_stl') and not failed:
+            failed = True
+            raise ValueError('Injected binary STL precision failure')
+        return convert(solid, **kwargs)
+    monkeypatch.setattr(geometry, 'as_trimesh', reject_once)
+    s = Settings(width=120, height=100, resolution=64, frame_mode='none', labels=False, joints=False,
+                 roads='none', water=False, buildings=False, multicolour=True)
+    def flat(xs, ys, geo):
+        return np.zeros((len(ys), len(xs))), [('forest', box(10, 10, 110, 90), {})]
+    parts, meta = generate_solids(s, quiet, flat)
+    assert parts[0]['colour_core'] == 'level-fallback'
+    assert any('Tile A1 uses a deeper, level colour core' in warning for warning in meta['warnings'])
+    exporter.validated_material_regions(parts[0], stl_origin=np.zeros(3))

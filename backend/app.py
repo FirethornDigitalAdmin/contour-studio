@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from shapely import affinity
@@ -27,6 +27,24 @@ jobs={}; lock=Lock()
 
 @app.get('/api/health')
 def health(): return {'status':'ok','application':'Contour Studio'}
+
+
+@app.get('/api/updates')
+def update_info():
+    from .updates import info
+    return info()
+
+
+@app.get('/api/updates/check')
+def update_check():
+    from .updates import check_updates, info
+    if not info()['desktop']:
+        raise HTTPException(404, 'Updates are available in the desktop app.')
+    try:
+        return check_updates()
+    except Exception:
+        logging.warning('Release check unavailable', exc_info=True)
+        raise HTTPException(503, 'Could not check for updates. Try again later.')
 
 
 @app.get('/api/preset')
@@ -62,6 +80,46 @@ def validate_marker_positions(s):
         footprint=affinity.translate(marker_shape(marker.symbol,marker.size),x,y)
         if not safe_area.covers(footprint):
             raise HTTPException(422,f'Marker “{marker.label}” lies outside the map or too close to its edge. Move it inward or reduce its size.')
+
+
+TRACING_LOCK = Lock()
+TRACING_CACHE = {}
+
+
+@app.post('/api/footprints')
+def tracing_footprints(s:Settings):
+    import time
+    key = (s.bounds.west,s.bounds.south,s.bounds.east,s.bounds.north,s.building_source)
+    # Development remounts and reopening the editor share one provider request.
+    with TRACING_LOCK:
+        cached = TRACING_CACHE.get(key)
+        if cached and time.monotonic()-cached[0] < 300:
+            return cached[1]
+        result = load_tracing_footprints(s)
+        if len(TRACING_CACHE) >= 8:
+            TRACING_CACHE.pop(next(iter(TRACING_CACHE)))
+        TRACING_CACHE[key] = (time.monotonic(),result)
+        return result
+
+
+def load_tracing_footprints(s:Settings):
+    from shapely.geometry import mapping
+    from shapely.ops import transform
+    # Reuse the exact source footprints used by generation, without terrain.
+    source=s.model_copy(update=dict(roads='none',water=False,forests=False,fields=False,
+                                   multicolour=False,landmarks=False,buildings=True))
+    geo=Geography(source)
+    try:
+        features, metadata=geo.vectors(lambda *args: None)
+    except Exception as exc:
+        logging.warning('Tracing footprints unavailable', exc_info=True)
+        raise HTTPException(502, 'Building outlines could not be loaded. You can still trace over your image.') from exc
+    def normalise(x,y,z=None):
+        import numpy as np
+        return (np.asarray(x)-geo.inset)/geo.map_width*1000, (1-(np.asarray(y)-geo.inset)/geo.map_height)*1000
+    return {'type':'FeatureCollection','features':[
+        {'type':'Feature','geometry':mapping(transform(normalise,g)), 'properties':{'id':tags.get('_osm_id',tags.get('_overture_id',''))}}
+        for kind,g,tags in features if kind=='building'], 'attribution':metadata.get('provider','')}
 
 
 @app.post('/api/layout')
@@ -168,6 +226,41 @@ def files(ident:str,path:str):
     if not target.is_relative_to(root) or not target.is_file(): raise HTTPException(404,'File not found.')
     if not (root/'project.zip').is_file(): raise HTTPException(409,'Project is still being generated or failed validation.')
     return FileResponse(target,filename=target.name if target.suffix in ('.zip','.stl','.3mf') else None)
+
+
+bambu_lock = Lock()
+
+
+@app.post('/api/projects/{ident}/bambu')
+def bambu_project(ident: str, request: Request, launch: bool = False):
+    origin = request.headers.get('origin')
+    if origin and origin != str(request.base_url).rstrip('/'):
+        raise HTTPException(403, 'Open Bambu Studio from this local workspace.')
+    if request.headers.get('sec-fetch-site') == 'cross-site':
+        raise HTTPException(403, 'Open Bambu Studio from this local workspace.')
+    root = project_root(ident)
+    info = completed_project(root)
+    if info is None:
+        raise HTTPException(409, 'Generate a complete model before opening Bambu Studio.')
+    from .bambu import prepare_project, launch_projects, REVISION
+    with bambu_lock:
+        try:
+            manifest_path = root / 'Bambu/plates.json'
+            manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else None
+            if (not manifest or manifest.get('revision') != REVISION
+                    or not manifest.get('files')
+                    or not all((root / file).resolve().is_relative_to(root) and (root / file).is_file() for file in manifest['files'])):
+                manifest = prepare_project(root, info)
+            if launch:
+                launch_projects([(root / file).resolve() for file in manifest['files']])
+            return manifest
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        except Exception:
+            logging.exception('Bambu project could not be opened')
+            raise HTTPException(503, 'Could not open Bambu Studio. Download the plate project and open it manually.')
 
 
 # The production build runs entirely from this local Python server.

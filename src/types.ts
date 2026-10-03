@@ -8,7 +8,11 @@ export type LocationMarker = {
   id: string; label: string; symbol: "heart" | "star" | "pin";
   lon: number; lat: number; size: number; rise: number;
 };
+export type CustomBuilding = { id: string; label: string; height: number; points: [number, number][] };
+export type ReferenceImage = { data: string; bounds: Bounds; x: number; y: number; width: number; aspect: number; rotation: number; opacity: number };
 export type Settings = {
+  custom_buildings?: CustomBuilding[];
+  reference_image?: ReferenceImage | null;
   name: string;
   bounds: Bounds;
   width: number;
@@ -48,11 +52,13 @@ export type Settings = {
   water_bank: number;
   forests: boolean;
   forest_style: "canopy" | "trees";
+  tree_type: "broadleaf" | "conifer" | "mixed";
+  forest_grouping: "groves" | "even";
   tree_size: number;
   tree_height: number;
   tree_spacing: number;
   fields: boolean;
-  field_style: "flat" | "furrows";
+  field_style: "flat" | "furrows" | "rounded";
   field_spacing: number;
   field_height: number;
   field_angle: number;
@@ -103,12 +109,14 @@ export type MulticolourTile = {
   materials: (PrintMaterial & { file: string; volume_mm3: number })[];
 };
 export type Model = {
+  bambu?: { files: string[]; plate_count: number; piece_count: number };
   name: string;
   settings: Settings;
   layout: { columns: number; rows: number };
   parts: Part[];
   multicolour?: { enabled: boolean; palette: PrintMaterial[]; tiles: MulticolourTile[]; instructions: string[] };
   model: {
+    colour_method?: string | null;
     warnings: string[];
     elevation_m: number[];
     features: Record<string, number>;

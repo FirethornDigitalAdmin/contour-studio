@@ -1,3 +1,4 @@
+import { validCustomBuildings, validReferenceImage } from "./tracing";
 import { layout, type LocationMarker, type Settings } from "./types";
 
 import { validBounds, insideBounds, longitudeOffset, longitudeSpan, polarArea } from "./world";
@@ -18,7 +19,7 @@ const limits: Partial<Record<keyof Settings, [number, number, boolean?]>> = {
   building_min_height: [0.2, 10], nozzle: [0.2, 1],
   marker_lon: [-180, 180], marker_lat: [-90, 90],
 };
-const choices: Partial<Record<keyof Settings, string[]>> = { layout: ["auto", "manual"], terrain_style: ["smooth", "terraced", "sculpted", "faceted"], frame_mode: ["integrated", "separate", "none"], roads: ["raised", "engraved", "none"], building_source: ["combined", "osm"], building_style: ["realistic", "uniform", "stepped"], small_buildings: ["enhance", "keep", "omit"], water_style: ["carved", "smooth"], forest_style: ["canopy", "trees"], field_style: ["flat", "furrows"] };
+const choices: Partial<Record<keyof Settings, string[]>> = { layout: ["auto", "manual"], terrain_style: ["smooth", "terraced", "sculpted", "faceted"], frame_mode: ["integrated", "separate", "none"], roads: ["raised", "engraved", "none"], building_source: ["combined", "osm"], building_style: ["realistic", "uniform", "stepped"], small_buildings: ["enhance", "keep", "omit"], water_style: ["carved", "smooth"], forest_style: ["canopy", "trees"], tree_type: ["broadleaf", "conifer", "mixed"], forest_grouping: ["groves", "even"], field_style: ["flat", "furrows", "rounded"] };
 const colourKeys: (keyof Settings)[] = ["colour_ground", "colour_water", "colour_forest", "colour_fields", "colour_roads", "colour_buildings", "colour_frame", "colour_markers"];
 const validColour = (value: unknown) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 const heartY = Array.from({ length: 96 }, (_, i) => { const a = i * Math.PI * 2 / 96; return 13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a); });
@@ -51,10 +52,11 @@ export function restoreDraft(value: unknown, defaults: Settings): Settings | nul
   const draft = value as Record<string, unknown>;
   const next = { ...defaults, ...draft } as Settings;
   for (const [key, fallback] of Object.entries(defaults)) {
-    if (key === "bounds" || key === "markers") continue;
+    if (key === "bounds" || key === "markers" || key === "custom_buildings" || key === "reference_image") continue;
     if (typeof next[key as keyof Settings] !== typeof fallback) return null;
     if (typeof fallback === "number" && !Number.isFinite(next[key as keyof Settings])) return null;
   }
+  if (!validCustomBuildings(next.custom_buildings ?? []) || !validReferenceImage(next.reference_image)) return null;
   if (!next.bounds || typeof next.bounds !== "object" || !["west", "south", "east", "north"].every((k) => typeof next.bounds[k as keyof typeof next.bounds] === "number" && Number.isFinite(next.bounds[k as keyof typeof next.bounds]))) return null;
   if (!Array.isArray(next.markers) || next.markers.length > 20 || next.markers.some((m) => !m || typeof m.id !== "string" || typeof m.label !== "string" || !["heart", "star", "pin"].includes(m.symbol) || ![m.lon, m.lat, m.size, m.rise].every((v) => typeof v === "number" && Number.isFinite(v)))) return null;
   if (Object.entries(choices).some(([key, values]) => !values.includes(String(next[key as keyof Settings])))) return null;
@@ -64,6 +66,8 @@ export function restoreDraft(value: unknown, defaults: Settings): Settings | nul
 
 export function validateDesign(s: Settings): string[] {
   const issues: string[] = [];
+  if (!validCustomBuildings(s.custom_buildings ?? [])) issues.push("Check added building outlines, names and heights in Add missing details.");
+  if (!validReferenceImage(s.reference_image)) issues.push("Choose a valid reference image in Add missing details.");
   if (colourKeys.some((key) => !validColour(s[key]))) issues.push("Choose a valid six-digit colour for each print material.");
   if (!s.name.trim() || s.name.length > 64) issues.push("Give your artwork a name of 1–64 characters.");
   for (const [key, values] of Object.entries(choices)) {
@@ -114,5 +118,6 @@ export function sameDesign(a: Settings, b: Settings): boolean {
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, canonical(child)]));
     return value;
   };
-  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+  const printable = (s: Settings) => { const { reference_image: _image, ...rest } = s; return { ...rest, custom_buildings: s.custom_buildings ?? [] }; };
+  return JSON.stringify(canonical(printable(a))) === JSON.stringify(canonical(printable(b)));
 }

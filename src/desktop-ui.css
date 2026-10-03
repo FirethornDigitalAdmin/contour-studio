@@ -65,3 +65,10 @@
 @media (min-width: 801px) and (max-height: 560px) {
   .map-view, .preview, .empty-preview, .layout-view { min-height: 120px; height: clamp(120px, calc(100dvh - 408px), 1100px); }
 }
+
+.update-notes { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; font: inherit; background: #f3f3ed; padding: 16px; border-radius: 10px; }
+.update-download { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.update-button { white-space: nowrap; }
+
+.update-button.has-update { position: relative; color: var(--accent); }
+.update-button.has-update::after { content: ""; position: absolute; top: 5px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }

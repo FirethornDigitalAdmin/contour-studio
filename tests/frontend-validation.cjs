@@ -21,7 +21,7 @@ const defaults = {
   seam: 0, joints: true, tolerance: 0.2, labels: true, frame_mode: "integrated", frame_width: 10, frame_depth: 5, frame_height: 12,
   corner_radius: 2, inner_bevel: 1, outer_bevel: 0.8, roads: "raised", road_width: 1.2, road_height: 0.6,
   water: true, water_width: 1.8, water_depth: 0.8, water_style: "carved", water_bank: 0,
-  forests: false, forest_style: "canopy", tree_size: 2.4, tree_height: 1.8, tree_spacing: 4,
+  forests: false, forest_style: "canopy", tree_type: "mixed", forest_grouping: "groves", tree_size: 2.4, tree_height: 1.8, tree_spacing: 4,
   fields: false, field_style: "furrows", field_spacing: 2.5, field_height: 0.35, field_angle: 25,
   multicolour: false, colour_depth: 0.8, colour_ground: "#80A768", colour_water: "#397CA7", colour_forest: "#80A768", colour_fields: "#E9DECA",
   colour_roads: "#E9DECA", colour_buildings: "#E9DECA", colour_frame: "#2B4045", colour_markers: "#2B4045", buildings: true, building_source: "combined", building_height: 8,
@@ -84,3 +84,19 @@ assert.equal(artworkRatio({ ...defaults, frame_mode: "none" }), 600 / 400);
 assert.deepEqual(fitArtworkBounds(defaults.bounds, 1).west, defaults.bounds.west);
 assert.deepEqual(fitArtworkBounds({ ...dateline, north: 86, south: 85.9 }, 1), { ...dateline, north: 86, south: 85.9 }, "polar coordinate selections are preserved");
 console.log("PASS: model freshness, draft shape/recovery, enum/range/frame/marker validation and stored custom styles.");
+const tracing=load('tracing');
+const authored={id:'house',label:'Missing house',height:18,points:[[-1.33,53.51],[-1.32,53.51],[-1.32,53.52],[-1.33,53.52]]};
+const tracedDefaults={...defaults,custom_buildings:[],reference_image:null};
+const reference={data:'data:image/jpeg;base64,aGVsbG8=',bounds:defaults.bounds,x:500,y:300,width:1000,aspect:1.5,rotation:5,opacity:.6};
+const traced={...tracedDefaults,custom_buildings:[authored],reference_image:reference};
+assert.deepEqual(validateDesign(traced),[]);
+assert.deepEqual(restoreDraft(JSON.parse(JSON.stringify(traced)),tracedDefaults),traced,'portable outlines and reference survive import');
+assert(sameDesign(traced,{...traced,reference_image:{...reference,opacity:.2}}),'reference changes do not require print regeneration');
+assert(!sameDesign(traced,{...traced,custom_buildings:[{...authored,height:30}]}),'height changes require regeneration');
+for(const bad of [null,{...authored,height:Infinity},{...authored,points:[[0,0],[1,1],[0,1],[1,0]]},{...authored,points:[[0,0],[1,0],[2,0]]}])assert(!tracing.validCustomBuildings([bad]));
+assert(!tracing.validCustomBuildings([authored,authored]));
+for(const bounds of [defaults.bounds,{west:179.98,east:-179.98,south:-17.01,north:-16.99},{west:0,east:.02,south:86,north:86.01}]){
+ const p=[bounds.west+.005,bounds.south+.005];const q=tracing.toGeographic(tracing.toDrawing(p,bounds),bounds);assert(Math.abs(p[0]-q[0])<1e-8&&Math.abs(p[1]-q[1])<1e-8,'projection round trip');
+}
+assert.equal(restoreDraft({...traced,reference_image:{...reference,data:'https://example.com/image.jpg'}},tracedDefaults),null);
+console.log('PASS: authored outlines, portable reference, print freshness and normal/date-line/polar tracing projections.');

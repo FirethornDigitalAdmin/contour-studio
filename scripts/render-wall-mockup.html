@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<meta charset="UTF-8">
+<title>Contour Studio · actual model wall render</title>
+<style>html,body{margin:0;width:1536px;height:1024px;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+
+// Render the original, unsimplified print-preview geometry over a room plate.
+// No image generator receives or redraws the product.
+const width = 1536, height = 1024;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(width, height);
+renderer.setPixelRatio(2);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.autoClear = false;
+document.body.appendChild(renderer.domElement);
+
+const backgroundScene = new THREE.Scene();
+const backgroundCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const texture = await new THREE.TextureLoader().loadAsync('/data/wall-mockup/modern-home-background.png');
+texture.colorSpace = THREE.SRGBColorSpace;
+backgroundScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: texture, depthTest: false, depthWrite: false, toneMapped: false })));
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, width / height, 1, 10000);
+// Calibrate the wall from two visible parallel horizontal cabinet edges in
+// the room plate. They meet to the LEFT, so the camera is on the RIGHT.
+// Keep the camera level and use lens shift: the photograph has upright
+// architectural verticals. Tilting a camera towards the product would create
+// the wrong convergence, even if one edge happened to match.
+const edge1 = [[268,666],[1535,748]], edge2 = [[270,890],[1535,1007]];
+const line = ([[x1,y1],[x2,y2]]) => ({m:(y2-y1)/(x2-x1), b:y1-(y2-y1)/(x2-x1)*x1});
+const a = line(edge1), b = line(edge2);
+const vanishingX = (b.b-a.b)/(a.m-b.m);
+const horizonY = a.m*vanishingX+a.b;
+const productX = 813, productY = 345;
+const focalLength = height/(2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2)));
+const yaw = Math.atan(focalLength/(productX-vanishingX));
+const distance = 2020;
+camera.position.set(Math.sin(yaw)*distance, 0, Math.cos(yaw)*distance);
+camera.lookAt(0,0,0);
+camera.setViewOffset(width,height,width/2-productX,height/2-horizonY,width,height);
+scene.add(new THREE.HemisphereLight('#fff9ee', '#aea48f', 1.35));
+const light = new THREE.DirectionalLight('#fff6e5', 2.1);
+light.position.set(-900, 1100, 1000);
+light.castShadow = true;
+light.shadow.mapSize.set(2048, 2048);
+light.shadow.camera.left = light.shadow.camera.bottom = -350;
+light.shadow.camera.right = light.shadow.camera.top = 350;
+light.shadow.camera.near = 1;
+light.shadow.camera.far = 3000;
+light.shadow.bias = -0.00006;
+light.shadow.normalBias = 0.08;
+light.shadow.radius = 3;
+scene.add(light);
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(5000, 5000), new THREE.ShadowMaterial({ opacity: .24 }));
+wall.receiveShadow = true;
+scene.add(wall);
+
+// The original four material regions, recoloured to suit oak and linen decor.
+const palette = { ground:'#C6C0AE',water:'#A4ADA6',forest:'#C6C0AE',fields:'#E8DECC',roads:'#E8DECC',buildings:'#E8DECC',frame:'#514B42' };
+const gltf = await new GLTFLoader().loadAsync('/data/perimeter-separate-frame-final-verification/preview.glb');
+const bounds = new THREE.Box3().setFromObject(gltf.scene);
+const center = bounds.getCenter(new THREE.Vector3());
+gltf.scene.position.set(-center.x, -center.y-(productY-horizonY)*distance/focalLength, 3 - bounds.min.z);
+let triangles = 0, meshes = 0;
+gltf.scene.traverse(child => {
+  if (!(child instanceof THREE.Mesh)) return;
+  const region = child.name.split('_').pop();
+  if (!palette[region]) throw new Error('Unexpected source mesh: ' + child.name);
+  child.geometry.computeVertexNormals();
+  child.material = new THREE.MeshStandardMaterial({ color: palette[region], roughness: .87, metalness: 0, flatShading: true });
+  child.castShadow = child.receiveShadow = true;
+  triangles += (child.geometry.index?.count ?? child.geometry.attributes.position.count) / 3;
+  meshes++;
+});
+scene.add(gltf.scene);
+renderer.clear();
+renderer.render(backgroundScene, backgroundCamera);
+renderer.clearDepth();
+renderer.render(scene, camera);
+window.wallRender = { ready: true, meshes, triangles, sizeMm: bounds.getSize(new THREE.Vector3()).toArray(), wallPerspective:{vanishingX,horizonY,yawDegrees:THREE.MathUtils.radToDeg(yaw)}, source: 'data/perimeter-separate-frame-final-verification/preview.glb' };
+</script>
+</html>

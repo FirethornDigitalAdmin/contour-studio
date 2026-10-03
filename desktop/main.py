@@ -88,9 +88,10 @@ def run_application(data_root):
             return
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.settings['OPEN_EXTERNAL_LINKS_IN_BROWSER'] = True
-        webview.create_window('Contour Studio', f'http://127.0.0.1:{port}', **window_options(),
+        window = webview.create_window('Contour Studio', f'http://127.0.0.1:{port}', **window_options(),
                               background_color='#fcfbf7', confirm_close=False, text_select=True)
-        webview.start(private_mode=False, storage_path=str(data_root / 'browser'), **browser_options)
+        from desktop.menus import studio_menu
+        webview.start(menu=studio_menu(window), private_mode=False, storage_path=str(data_root / 'browser'), **browser_options)
     finally:
         from backend.worker import stop_workers
         stop_workers()

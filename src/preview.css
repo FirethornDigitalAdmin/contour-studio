@@ -230,3 +230,7 @@
   .preview-inspection-tools button { width: 40px; justify-content: center; }
   .layout-selected-tile { flex-wrap: wrap; justify-content: center; }
 }
+
+.package-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bambu-downloads { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 16px; }
+.bambu-downloads a { display: inline-flex; align-items: center; gap: 5px; font-size: .8rem; }

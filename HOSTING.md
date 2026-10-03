@@ -46,4 +46,53 @@ The public website is [Contour Studio](https://firethorndigitaladmin.github.io/c
 
 `src/distribution.ts` holds the shared GitHub repository, pinned release tag and optional coffee URL. Keep the release tag and installer filenames aligned with the actual published assets when preparing a new release. The app and website share `CoffeeLink.tsx`; no payment SDK, tracking widget or feature gate is used.
 
+The creator introduction and Twitter / X and portfolio links are shared through
+`src/Creator.tsx` and the `creator` entry in `src/distribution.ts`. The website
+offers **Meet Louis** in its navigation and social links in the footer. The app
+opens the same introduction from **by Louis Goldsbrough** beneath the logo or
+from Help. External links open in a separate browser tab or the desktop app's
+system browser.
+
 After pushing website/app changes to `main`, run **Actions → Deploy free web workspace → Run workflow** to publish them. The website uses static hosting; downloads are served by GitHub Releases.
+
+## Sites deployment
+
+The same website is now published publicly through Sites at
+[Contour Studio](https://contour-studio.louisgoldsbrough.chatgpt.site).
+Its separate deployment checkout is `sites-contour-studio/`, with the Sites identity
+in `sites-contour-studio/.openai/hosting.json`. This checkout contains only the
+compiled public website and licence; local projects, caches and the Python engine
+are excluded. Downloads continue to use GitHub Releases.
+
+To update this deployment, run `pnpm build:hosted` in the application directory,
+replace the deployment checkout's `dist/` with the new `dist-hosted/`, then use the
+Sites source-and-publishing workflow in that checkout. Preserve its existing Site
+identity and public audience.
+
+The primary address is [contour-studio.app](https://contour-studio.app/).
+On 3 October 2026 Sites confirmed the custom domain, routing and SSL were active,
+and an HTTPS request returned HTTP 200. The following DNS records were supplied
+by Sites for the connection:
+
+| Type | Name | Content |
+| --- | --- | --- |
+| A | `@` | `162.159.143.30` |
+| A | `@` | `172.66.3.26` |
+| TXT | `_openai-site-verification` | `openai-site-verification=B6v1EPvIrNwpOTjaZeVEVfm0UC_PBmKpZYHoSmTHrQM` |
+| TXT | `_cf-custom-hostname` | `93188e69-54db-4813-9f1c-3a4286c1c27e` |
+
+Inspect existing apex records before replacing any that route the website. Keep
+mail and unrelated records. After adding the records, refresh the custom-domain
+status in Sites; both routing and SSL must be active before treating the domain
+as ready. These are the records returned for this Site, not generic defaults.
+
+### Current workspace downloads
+
+The Sites deployment serves the rebuilt local-browser and source ZIPs at
+`/downloads/Contour-Studio-local.zip` and `/downloads/Contour-Studio-source.zip`,
+with matching hashes in `/downloads/SHA256SUMS.txt`. Rebuild the interface and
+release ZIPs, verify their CRC and contents, then copy them into the deployment
+checkout's `dist/downloads/` alongside the hosted interface before publishing.
+These current copies include tracing and the colour-depth fix. The Mac and
+Windows installer links remain pinned to their separately tested GitHub release;
+a source push or web publication does not rebuild those installers.

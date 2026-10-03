@@ -31,6 +31,9 @@ import {
   Github,
 } from "lucide-react";
 import CoffeeLink from "./CoffeeLink";
+import AppUpdates from "./AppUpdates";
+import BrandMark from "./BrandMark";
+import Creator from "./Creator";
 import { repository, releaseUrl } from "./distribution";
 import { api, hostedWorkspace, starterPlaces } from "./hosted";
 import { ApiError, layout, type Settings, type Job } from "./types";
@@ -43,6 +46,7 @@ import useDesignHistory from "./useDesignHistory";
 import { restoreDraft, sameDesign, validateDesign } from "./validation";
 import { validBounds, insideBounds, centreLongitude, placeBounds, artworkRatio, fitArtworkBounds } from "./world";
 const MapView = lazy(() => import("./MapView"));
+const TraceEditor = lazy(() => import("./TraceEditor"));
 const Preview = lazy(() => import("./Preview"));
 
 const steps = [
@@ -75,7 +79,7 @@ type Project = {
   terrain_style?: string;
 };
 type SearchResult = { display_name: string; lon: string; lat: string };
-type View = "map" | "layout" | "3d";
+type View = "map" | "layout" | "3d" | "trace";
 
 export default function App() {
   const { settings, setSettings, patch, undo, redo, canUndo, canRedo } = useDesignHistory();
@@ -105,6 +109,8 @@ export default function App() {
   const draftSnapshot = useRef<string | null>(null);
   draftSnapshot.current = settings ? JSON.stringify({ version: 1, settings, jobId: job?.id, step, view, mapRatioLocked }) : null;
   const helpDialog = useRef<HTMLDialogElement>(null);
+  const creatorDialog = useRef<HTMLDialogElement>(null);
+  const creatorCredit = useRef<HTMLButtonElement>(null);
   const projectDialog = useRef<HTMLDialogElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
@@ -132,7 +138,7 @@ export default function App() {
               if (savedJob?.result) savedJob = { ...savedJob, result: { ...savedJob.result, settings: { ...defaults, ...savedJob.result.settings, building_source: savedJob.result.settings.building_source ?? "osm", markers: savedJob.result.settings.markers ?? [] } } };
               if (!alive) return;
               setStep([0, 1, 2].includes(draft.step) ? draft.step : 0);
-              setView(["map", "layout", "3d"].includes(draft.view) ? draft.view : "map");
+              setView(["map", "layout", "3d", "trace"].includes(draft.view) ? draft.view : "map");
               setMapRatioLocked(draft.mapRatioLocked !== false);
               setDraftStatus("Your last design was restored");
             }
@@ -248,6 +254,27 @@ export default function App() {
         ?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [placingMarker, view]);
 
+  useEffect(() => {
+    if (hostedWorkspace || !settings) return;
+    const onMenu = (event: Event) => {
+      const command = (event as CustomEvent<string>).detail;
+      if (!["place", "design", "make", "projects", "save-design", "import-design", "help"].includes(command)) return;
+      if (busy && ["place", "design", "make", "projects", "import-design"].includes(command)) return;
+      document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(open => open.close());
+      switch (command) {
+        case "place": go(0); break;
+        case "design": go(1); break;
+        case "make": go(2); break;
+        case "projects": projectDialog.current?.showModal(); void refreshProjects(); break;
+        case "save-design": saveSettings(); break;
+        case "import-design": importInput.current?.click(); break;
+        case "help": helpDialog.current?.showModal(); break;
+      }
+    };
+    window.addEventListener("contour:menu", onMenu);
+    return () => window.removeEventListener("contour:menu", onMenu);
+  });
+
   if (!settings)
     return (
       <div className="startup">
@@ -283,11 +310,12 @@ export default function App() {
   const outsideMarkers = s.markers.some(m => !insideBounds(m.lon,m.lat,s.bounds));
 
   const geometryStale = !!model && (
-    model.model.geometry_revision !== "supported-edges-frame-lip-v3" ||
+    model.model.geometry_revision !== "flat-colour-depth-v5" ||
     (model.settings.frame_mode === "separate" && model.model.frame_fit?.assembly !== "chamfered-insert")
   );
   const stale = !!model && (
     geometryStale ||
+    (s.multicolour && model.model.colour_method !== "surface-core-v1") ||
     !sameDesign(model.settings, s) ||
     (s.terrain_style === "terraced" && model.model.terrain_method !== "contour-bands") ||
     (s.buildings && s.building_style === "realistic" && model.model.city_method !== "mapped-parts-roofs-v1")
@@ -479,7 +507,7 @@ export default function App() {
   }
   async function importSettings(file: File) {
     try {
-      if (file.size > 1024 * 1024) throw new Error("Choose a settings JSON smaller than 1 MB.");
+      if (file.size > 10 * 1024 * 1024) throw new Error("Choose a settings JSON smaller than 10 MB.");
       const parsed = JSON.parse(await file.text());
       const validated = await api<Settings>("/validate", parsed);
       setSettings(validated);
@@ -503,18 +531,21 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="header">
+        <div className="app-brand-block">
         <a
           className="brand"
           href="#workspace"
           aria-label="Contour Studio workspace"
         >
           <span className="brand-mark">
-            <Layers size={22} />
+            <BrandMark />
           </span>
           <span>
             contour<span className="brand-light"> studio</span>
           </span>
         </a>
+        <button ref={creatorCredit} className="app-creator-credit" aria-label="About Louis Goldsbrough" aria-haspopup="dialog" onClick={() => creatorDialog.current?.showModal()}>by Louis Goldsbrough</button>
+        </div>
         <nav className="stepper" aria-label="Create your artwork">
           {steps.map((item, i) => (
             <button
@@ -535,10 +566,13 @@ export default function App() {
           ))}
         </nav>
         <div className="header-tools">
+        <AppUpdates />
         <CoffeeLink className="app-coffee-link" />
         <button className="help-button" aria-label="How it works" title="How it works" onClick={() => helpDialog.current?.showModal()}><CircleHelp size={19} /><span>Help</span></button>
         <button
           className="projects-button"
+          aria-label={hostedWorkspace ? "Print locally" : "My projects"}
+          title={hostedWorkspace ? "Print locally" : "My projects"}
           disabled={busy}
           onClick={() => { if (hostedWorkspace) helpDialog.current?.showModal(); else { projectDialog.current?.showModal(); void refreshProjects(); } }}
         >
@@ -883,12 +917,14 @@ export default function App() {
               {(
                 [
                   ["map", Map, "Map"],
+                  ["trace", Plus, "Add missing details"],
                   ["layout", Ruler, "Tile layout"],
                   ["3d", Box, "3D preview"],
                 ] as const
               ).map(([name, Icon, label]) => (
                 <button
                   key={name}
+                  disabled={name === "trace" && busy}
                   aria-pressed={view === name}
                   className={view === name ? "active" : ""}
                   onClick={() => {
@@ -917,7 +953,7 @@ export default function App() {
               <TriangleAlert size={16} />
               <span>
                 {geometryStale
-                  ? "Updated landscape edges and frame support are available. Rebuild this model to apply them."
+                  ? "Updated printable geometry is available. Rebuild this model to apply it."
                   : "Changes haven’t been built yet. This preview uses your last generated settings."}
               </span>
               {step !== 2 && (
@@ -944,7 +980,9 @@ export default function App() {
                 </div>
               }
             >
-              {view === "map" ? (
+              {view === "trace" ? (
+                <TraceEditor settings={s} onChange={patch} disabled={busy} onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
+              ) : view === "map" ? (
                 <MapView
                   settings={s}
                   ratioLocked={mapRatioLocked}
@@ -1029,7 +1067,9 @@ export default function App() {
             <div className="canvas-caption">
               <span>
                 <span className="dot" />
-                {view === "map"
+                {view === "trace"
+                  ? `Tracing view · ${s.custom_buildings?.length ?? 0} added buildings`
+                  : view === "map"
                   ? step === 0
                     ? "Adjust your selected area"
                     : "Selected area"
@@ -1073,7 +1113,9 @@ export default function App() {
           {step !== 2 && (
             <div className="workspace-note">
               <span>
-                {step === 0
+                {view === "trace"
+                  ? "Added buildings are saved with your design and included when you generate the model."
+                  : step === 0
                   ? view === "layout"
                     ? "The finished artwork includes the frame. Each tile prints separately and joins into one piece."
                     : "Adjust your selected area and artwork size, then make it your own."
@@ -1160,6 +1202,10 @@ export default function App() {
           )}
         </div>
       </footer>
+      <dialog ref={creatorDialog} className="help-dialog creator-dialog" aria-labelledby="creator-dialog-title" onClose={() => creatorCredit.current?.focus()} onClick={e => { if (e.target === e.currentTarget) creatorDialog.current?.close(); }}>
+        <div className="panel-heading"><h2 id="creator-dialog-title">Meet the maker</h2><button aria-label="Close about Louis" onClick={() => creatorDialog.current?.close()}><X size={20} /></button></div>
+        <Creator headingId="app-creator-title" compact />
+      </dialog>
       <dialog ref={helpDialog} className="help-dialog" aria-labelledby="help-title" onClick={e => { if (e.target === e.currentTarget) helpDialog.current?.close(); }}>
         <div className="panel-heading"><div><span className="eyebrow">A LITTLE PIECE OF THE WORLD</span><h2 id="help-title">From map to mantelpiece.</h2></div><button aria-label="Close help" onClick={() => helpDialog.current?.close()}><X size={20} /></button></div>
         <p className="help-intro">Choose somewhere that means something to you. Turn its landscape into an artwork you can hold.</p>
@@ -1178,6 +1224,7 @@ export default function App() {
           <p>If you’ve enjoyed using it, you can buy me a coffee as a thanks. It’s entirely optional; every feature stays free.</p>
           <CoffeeLink />
         </section>
+        <button className="help-creator-link" onClick={() => { helpDialog.current?.close(); creatorDialog.current?.showModal(); }}>Meet Louis, the maker of Contour Studio<ArrowRight size={17} aria-hidden="true" /></button>
       </dialog>
       <dialog
         ref={projectDialog}

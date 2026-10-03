@@ -1,5 +1,22 @@
 # Verification record
 
+## 3 October 2026 — creator profile photograph
+
+- Replaced the LG monogram with the user's supplied photograph, edited with the built-in image tool into a muted green monochrome head-and-shoulders portrait. The master and exact edit prompt are preserved in `brand/`; the shared public WebP is 1254 × 1254 and 173,762 bytes.
+- The website, web designer and local app share `public/louis-profile-monochrome.webp`. The compact About panel uses a 96 × 108 px arched portrait; the desktop website uses 180 × 200 px.
+- Local and hosted builds pass, including the current homepage prerender. Focused Chrome and WebKit checks pass image decoding, creator links, dialog/keyboard behaviour and 320–1440 px layouts without page errors.
+- Updated the local Mac UI bundle and verified its ad-hoc signature. The active native app server serves the portrait; a fresh 390 px browser check confirms one app shell and one open dialog. Reopen the native window to load the update. Public release installers still need a separate rebuild.
+- Sites publication succeeded for source commit `611906cba1952fac4439891c81cb259430ab19c7`, saved version 5, with public access preserved.
+
+## 3 October 2026 — creator introduction and social links
+
+- Added a shared creator introduction based on the current portfolio description, with Twitter / X at `https://twitter.com/imloulou` and the portfolio at `https://louisgoldsbrough.co.uk/`.
+- Website navigation, a dedicated Meet Louis section and footer links expose the creator. The local app and hosted designer open a matching About panel from the logo credit or Help.
+- Local and hosted production builds and frontend validation pass. Focused Chrome and WebKit browser checks pass for both links and their external-navigation attributes, website/footer/app content, dialog opening, Escape, focus restoration and Help handoff, with no JavaScript page errors.
+- Website, web designer and local app fit 320, 390, 768, 900 and 1440 px viewports. Visual evidence is saved in `data/creator-website-*.png` and `data/creator-app-*.png`.
+- The local Mac UI bundle was updated with the compiled interface and its ad-hoc signature verifies. The running native app server serves the new About panel and both links without page errors. Reopen the native window to load the update. Public release installers require rebuilding separately.
+- Sites publication succeeded for source commit `1c39ad67492803cbbffd10bb55ad40a2ac9a8e12` and saved version 3, preserving public access and the existing domain.
+
 ## 2 October 2026 — reliability and customisation polish
 
 - Added browser-local draft recovery (including invalid in-progress layouts), session undo/redo, reusable custom styles, search/sort in the project library, map appearance choices and clearer generation validation. Stale-model comparison now uses values, so object field order does not incorrectly mark completed models out of date. Imports are normalised by the backend.
@@ -167,3 +184,26 @@ No physical print or wall-mounting trial has been performed. Print the fit coupo
 - The replacement preserves all 1,360,340 original triangles across 28 meshes, with lossless mesh compression: 6,602,720 bytes. The builder compares decoded float32 vertex bytes and every oriented triangle with the source. Independent Trimesh checks confirm all meshes retain their source triangle counts, bounds, volumes, closed surfaces and consistent winding. The new asset integrity regression checks decoded surface closure and winding during `pnpm test`.
 - Increased camera near distance from 1 to 10 mm and reduced far distance to 3,000 mm for better depth precision. Fine material regions no longer receive shadow maps; the terrain and frame still cast shadows onto the floor. Preserved the drawing buffer for stable idle and captured frames. A new asset filename avoids cached copies of the damaged model.
 - The isolated hosted production build and frontend/geometry tests pass. Browser checks observed clean close-up surfaces while rotating and with colours off, intact exploded tiles and frame, reassembly, and a 390 px phone layout without horizontal overflow. No browser errors or warnings were reported. A full-page capture retains the rendered model when idle. These are browser checks on this computer, not a physical phone trial.
+- Published the repair to the public GitHub repository in commit `cd01b225e6686c10b0b265f1d9af8e61be8a6ad2`. The Check and package workflow and GitHub Pages deployment both completed successfully.
+
+## Wall-art website mockup — 3 October 2026
+
+- Added a modern-home wall view below the homepage hero. The product comes from the original, unsimplified 400 × 280 mm Bolton relief GLB: 28 meshes and 1,360,340 triangles. Only its four material colours were changed to warm stone, cream, muted grey-green and warm charcoal to suit the room decor. The print files were not modified.
+- Generated only the empty room background with the built-in imagegen tool. The source model is rendered directly in Three.js. Corrected the initial camera direction and horizon using the room's cabinet-edge vanishing point and upright verticals, so the model follows the wall's perspective. Source hash, full room prompt, palette and rendering method are recorded in `data/wall-mockup/provenance.md`.
+- Exported responsive 960/1920 px WebP assets, a JPEG fallback and a tighter portrait crop for phones. The page labels the image as an actual generated model in a digital room mockup. This is not a physical print photograph or a measured furniture-scale claim.
+- TypeScript and hosted production build pass. Browser checks at 1440, 390 and 320 px confirm the appropriate image loads, no horizontal overflow, working existing interactive model and no page errors. Desktop/mobile sections were visually inspected; screenshots are in `data/wall-mockup/page-*.png`.
+- Published successfully through the existing public Sites deployment as version 2, source commit `be9dae6bb1af179f0d01e22f60a5fb1968d33da9`, deployment `appgdep_6ac042ac819c8191bc6a2e13205f68c9`. Sites reports success. The primary custom domain is `https://contour-studio.app`; production was not separately browser-tested after publishing.
+
+
+## Native Studio menus — 3 October 2026
+
+- Added Check for Updates to the macOS application menu, a Studio menu for workflow navigation, projects and design save/import, and Help → How It Works. Actions use the existing React controls and respect generation locks. Standard Edit/View menus remain.
+- TypeScript/production build and 15 desktop startup/update tests pass. The browser update test passes native-command navigation, saving/importing a design, modal switching, offline retry, current/available releases, text-safe release notes and small-window focus.
+- In the packaged Apple Silicon app, direct native UI inspection confirms Contour Studio → Check for Updates opens the update dialog and Studio → Design Your Map opens Style while closing that dialog.
+- A local rc.2 menu preview installer is saved as releases/Contour-Studio-macOS-arm64-menu-preview.dmg and copied to Downloads. It has not replaced the public rc.1 release.
+
+## 3 October 2026 — building tracing and flat colour depth
+
+- The full Python suite passed: 258 tests. Flat engraved-road material layers now preserve the requested colour depth; uneven terrain retains its conservative core clearance.
+- Frontend validation and showcase integrity passed. Chrome and WebKit verified rectangle/outline drawing, corner and rotation edits, image upload/alignment/comparison, undo/redo, portable save/import, draft recovery and touch drawing.
+- Local and hosted production builds passed. The current source/local ZIPs include geographic custom-building outlines and printable generation. Native installer rebuilding is a separate release step.

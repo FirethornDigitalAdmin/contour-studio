@@ -1,7 +1,11 @@
+#ifndef AppReleaseVersion
+  #define AppReleaseVersion "1.0.0-rc.2"
+#endif
+
 [Setup]
 AppId={{72F49713-F17E-4382-B17C-F47F4770A391}
 AppName=Contour Studio
-AppVersion=1.0.0
+AppVersion={#AppReleaseVersion}
 AppPublisher=Contour Studio contributors
 DefaultDirName={localappdata}\Programs\Contour Studio
 DefaultGroupName=Contour Studio

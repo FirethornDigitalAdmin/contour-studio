@@ -8,7 +8,7 @@ import numpy as np
 import trimesh
 from matplotlib.textpath import TextPath
 from matplotlib.font_manager import FontProperties
-from scipy.ndimage import gaussian_filter, map_coordinates
+from scipy.ndimage import gaussian_filter, map_coordinates, minimum_filter
 from shapely import affinity
 from shapely import set_precision
 from shapely.geometry import Polygon, MultiPolygon, box, Point
@@ -21,7 +21,7 @@ from .geodata import Geography
 
 MAX_TREES = 1200
 MAX_FIELD_STRIPS = 800
-GEOMETRY_REVISION = 'supported-edges-frame-lip-v3'
+GEOMETRY_REVISION = 'flat-colour-depth-v5'
 FRAME_LIP_WIDTH = 2.0
 FRAME_LIP_HEIGHT = 2.0
 
@@ -64,28 +64,28 @@ def material_partition(solid, candidates, progress=None, core=None):
     return regions
 
 
-def supported_tree_solid(footprint, floor, height, tip_ratio):
-    """A supported crown and pedestal with one shared, exact vertex ring.
-
-    Independently generated cylinder/polygon rims can differ by nanometres;
-    welding those near-coincident rims at STL precision creates extra faces.
-    Constructing the full tree once avoids that intersection entirely.
-    """
+def supported_tree_solid(footprint, floor, height, tip_ratio, broadleaf=False):
+    """One shared ring mesh keeps the terrain pedestal and crown watertight."""
     ring=np.asarray(orient(footprint,sign=1).exterior.coords)[:-1,:2]
     centre=ring.mean(axis=0)
-    tip=centre+(ring-centre)*tip_ratio
+    profile=[(0,1),(floor,1)]
+    if broadleaf:
+        # Rounded, tapering crown: no unsupported branches or separate trunk.
+        profile.extend((floor+height*z,r) for z,r in [(0.25,.97),(.5,.86),(.75,.65),(.93,.35),(1,.08)])
+    else:
+        profile.append((floor+height,tip_ratio))
     count=len(ring)
-    vertices=np.vstack([np.column_stack([ring,np.zeros(count)]),
-                        np.column_stack([ring,np.full(count,floor)]),
-                        np.column_stack([tip,np.full(count,floor+height)]),
-                        [centre[0],centre[1],0],
-                        [centre[0],centre[1],floor+height]])
-    faces=[]
+    vertices=np.vstack([*[np.column_stack([centre+(ring-centre)*r,np.full(count,z)]) for z,r in profile],
+                        [centre[0],centre[1],0],[centre[0],centre[1],floor+height]])
+    faces=[]; bottom=len(profile)*count; top=bottom+1
     for i in range(count):
         j=(i+1)%count
-        faces.extend([(3*count,j,i),(i,j,count+j),(i,count+j,count+i),
-                      (count+i,count+j,2*count+j),(count+i,2*count+j,2*count+i),
-                      (3*count+1,2*count+i,2*count+j)])
+        faces.append((bottom,j,i))
+        for level in range(len(profile)-1):
+            lo=level*count; hi=lo+count
+            faces.extend([(lo+i,lo+j,hi+j),(lo+i,hi+j,hi+i)])
+        last=(len(profile)-1)*count
+        faces.append((top,last+i,last+j))
     return mesh_manifold(vertices,faces)
 
 
@@ -109,17 +109,30 @@ def landcover_geometry(forests, fields, exclusions, original, s, sample, limit):
             nonlocal tree_count
             footprint=Point(x,y).buffer(radius,quad_segs=4)
             if tree_count>=MAX_TREES or not forest.covers(footprint): return
+            if any(math.hypot(x-px,y-py)<spacing-1e-6 for px,py in tree_points): return
             floor=float(max(sample(list(footprint.exterior.coords))))
             height=s.tree_height*(0.55 if s.forest_style=='canopy' else 1)
             if floor+height>s.printer_z:
                 raise ValueError('Forest texture exceeds the printer height. Reduce tree height or terrain exaggeration.')
             # Shared pedestal/crown vertices make a single supported solid.
             tree=supported_tree_solid(footprint,floor,height,
-                                      0.65 if s.forest_style=='canopy' else 0.04)
+                                      0.65 if s.forest_style=='canopy' else 0.04,
+                                      broadleaf=s.forest_style=='trees' and (s.tree_type=='broadleaf' or
+                                          (s.tree_type=='mixed' and (round(x/spacing)+round(y/spacing))%3!=0)))
             added.append(tree); tree_points.append((x,y)); tree_footprints.append(footprint); tree_count+=1
-        for row,y in enumerate(np.arange(y0+spacing/2,y1,spacing)):
-            for x in np.arange(x0+spacing/2+(spacing*.25 if row%2 else 0),x1,spacing):
-                add_tree(x,y)
+        if s.forest_grouping=='groves':
+            # Seven crowns per grove, with a full spacing gap between groups.
+            grove_spacing=spacing*4
+            for row,y in enumerate(np.arange(y0+spacing,y1,grove_spacing)):
+                for x in np.arange(x0+spacing+(grove_spacing/2 if row%2 else 0),x1,grove_spacing):
+                    add_tree(x,y)
+                    for i in range(6):
+                        angle=i*math.pi/3+row*.3
+                        add_tree(x+spacing*1.05*math.cos(angle),y+spacing*1.05*math.sin(angle))
+        else:
+            for row,y in enumerate(np.arange(y0+spacing/2,y1,spacing)):
+                for x in np.arange(x0+spacing/2+(spacing*.25 if row%2 else 0),x1,spacing):
+                    add_tree(x,y)
         # A small woodland can fit a crown while falling between grid points.
         # Give unsampled fragments one safe interior candidate, retaining the
         # requested minimum spacing and the same global geometry cap.
@@ -133,7 +146,7 @@ def landcover_geometry(forests, fields, exclusions, original, s, sample, limit):
             add_tree(x,y)
     forest_added=union(added)
     field_added=md.Manifold()
-    if s.fields and s.field_style=='furrows' and not field.is_empty:
+    if s.fields and s.field_style!='flat' and not field.is_empty:
         # Rotate the polygon into stripe coordinates, then clip and rotate back;
         # courtyards, forest boundaries and all exclusions remain intact.
         rotated=affinity.rotate(field,-s.field_angle,origin=(0,0))
@@ -149,6 +162,14 @@ def landcover_geometry(forests, fields, exclusions, original, s, sample, limit):
         strips=[]
         for y in np.arange(y0+spacing/2,y1,spacing)[:MAX_FIELD_STRIPS]:
             strip=box(x0,y-width/2,x1,y+width/2).intersection(rotated)
+            if s.field_style=='rounded':
+                # Round each clipped row end while respecting holes and exclusions.
+                pieces=[]
+                for piece in ([strip] if isinstance(strip,Polygon) else getattr(strip,'geoms',[])):
+                    if not isinstance(piece,Polygon) or piece.is_empty: continue
+                    rounding=min(width,piece.bounds[3]-piece.bounds[1])*.45
+                    pieces.append(piece.buffer(-rounding).buffer(rounding,quad_segs=4))
+                strip=unary_union(pieces).intersection(rotated)
             if not strip.is_empty:
                 strips.append(affinity.rotate(strip,s.field_angle,origin=(0,0))); strip_count+=1
         if strips:
@@ -589,6 +610,8 @@ def generate_solids(s, progress, data_override=None):
     else:
         dem,dem_meta=geo.elevation(xs,ys,progress)
         features,osm_meta=geo.vectors(progress)
+    from .custom_buildings import merge_custom_buildings
+    features, custom_count = merge_custom_buildings(features, s, geo)
     progress(32,'Building the continuous terrain solid')
     smoothed=gaussian_filter(dem,s.smoothing) if s.smoothing else dem
     reserve=max(s.water_depth if s.water else 0,s.road_height if s.roads=='engraved' else 0)
@@ -679,7 +702,7 @@ def generate_solids(s, progress, data_override=None):
             polys=[geom] if isinstance(geom,Polygon) else list(geom.geoms)
             for poly in polys: points.extend(poly.exterior.coords)
             real_h=source_height(tags,s.building_height)
-            if s.building_style=='uniform': real_h=s.building_height
+            if s.building_style=='uniform' and not tags.get('_custom_id'): real_h=s.building_height
             relief=max(s.building_min_height,real_h*geo.scale*s.building_exaggeration)
             top=float(max(sample(points)))+relief
             if not math.isfinite(top) or top > s.printer_z:
@@ -849,18 +872,35 @@ def generate_solids(s, progress, data_override=None):
     material_sources={}
     if s.multicolour:
         progress(55,'Separating printable colour surfaces')
-        # A level core avoids tangencies between draped colour floors and
-        # feature walls. Semantic footprints capture complete roofs, crowns
-        # and ridges without changing the finished physical parent.
+        # An independently sampled, conservative heightfield follows hills
+        # without coincident triangulation at every original channel edge.
+        # Each coarse vertex uses the lowest source height in its surrounding
+        # cells, so interpolated core triangles stay below the visible relief.
+        core_z=minimum_filter(z,size=5,mode='nearest')
+        iy=np.unique(np.r_[np.arange(0,len(ys),2),len(ys)-1])
+        ix=np.unique(np.r_[np.arange(0,len(xs),2),len(xs)-1])
+        recess=max(s.water_depth if waters else 0,
+                   s.road_height if roads and s.roads=='engraved' else 0)
+        if waters and s.water_style=='smooth':
+            recess=max(recess,float(np.max(z-bed_z)))
+        # Flat caps need no numerical allowance: preserve the requested
+        # layer depth exactly. Uneven terrain retains the conservative gap.
+        core_clearance=0.0 if float(np.ptp(z)) < 1e-9 else 0.01
+        colour_base=terrain_solid(xs[ix],ys[iy],np.maximum(.05,core_z[np.ix_(iy,ix)]
+                                 -s.colour_depth-recess-core_clearance))
+        if s.terrain_style=='faceted':
+            # Facets are already coarse; another min-filter would bury
+            # unnecessary colour beneath their deliberately broad triangles.
+            colour_base=original.translate((0,0,-s.colour_depth-recess-core_clearance))
+        # Retain the proven level core for tiles whose following boundaries
+        # cannot survive binary STL precision. Never weaken export validation.
         colour_floor=s.base+reserve
         if waters:
             colour_floor=min(colour_floor,float(bed_z.min()) if s.water_style=='smooth'
                              else s.base+reserve-s.water_depth)
         if roads and s.roads=='engraved':
             colour_floor=min(colour_floor,s.base+reserve-s.road_height)
-        colour_base=prism(map_clip,colour_floor)
-        # The selected colour depth is a minimum surface thickness. Higher
-        # terrain extends to a shared level core below the lowest surface.
+        flat_colour_base=prism(map_clip,colour_floor).translate((0,0,-s.colour_depth))
         for name,area in [('water',water_area),('roads',road_area),
                           ('forest',forest_area),('fields',field_area),
                           ('buildings',unary_union([a for a,_ in building_tops])),
@@ -923,7 +963,7 @@ def generate_solids(s, progress, data_override=None):
             record={'id':ident,'kind':'terrain','solid':part,'row':row,'column':col,'neighbours':neighbours,'cut_bounds':[left,bottom,right,top]}
             if s.multicolour:
                 progress(58,f'Partitioning colour volumes for tile {ident} of {cols*rows}')
-                local_core=colour_base.translate((0,0,-s.colour_depth))^cutter
+                local_core=colour_base^cutter
                 # Keep the internal core off the exact frame-wall plane;
                 # the uncoloured skin supplies this microscopic edge column.
                 local_core=local_core^prism(map_clip.buffer(-0.001),limit+1)
@@ -937,6 +977,16 @@ def generate_solids(s, progress, data_override=None):
                     material_candidates['frame']=lambda:frame^cutter
                 record['material_regions']=material_partition(part,material_candidates,
                     lambda step:progress(58,f'Tile {ident}: {step}'),core=local_core)
+                record['colour_core']='surface-following'
+                origin=as_trimesh(part).bounds[0]
+                try:
+                    for region in record['material_regions'].values():
+                        as_trimesh(region,ensure_stl=True,stl_origin=origin)
+                except ValueError:
+                    record['material_regions']=material_partition(part,material_candidates,
+                        core=(flat_colour_base^cutter)^prism(map_clip.buffer(-0.001),limit+1))
+                    record['colour_core']='level-fallback'
+                    warnings.append(f'Tile {ident} uses a deeper, level colour core because surface-following boundaries failed STL precision checks. Its colour regions still undergo full export validation.')
             parts.append(record)
             if s.frame_mode=='separate':
                 frame_part=frame^cutter
@@ -977,7 +1027,7 @@ def generate_solids(s, progress, data_override=None):
     if s.forests or s.fields or s.multicolour:
         warnings.append('Forest, field and grass regions use OpenStreetMap land-cover polygons. Coverage and boundaries depend on source mapping; individual printable trees are illustrative, not surveyed tree positions.')
     if s.multicolour:
-        warnings.append(f'Colour depth is a minimum of {s.colour_depth:g} mm below the printable surface. Higher terrain colours extend deeper to a level core below the lowest river or road bed; roofs, trees and field ridges use their complete feature colour.')
+        warnings.append(f'Colour follows a conservative terrain core with a minimum {s.colour_depth:g} mm surface depth. Recess clearance, slopes and terrace risers can thicken the colour layer; raised details retain their colour. The core uses the ground colour. Slice to check actual filament changes and opacity.')
     if s.forests and not forest_areas:
         warnings.append('No mapped forest or woodland polygons were found in this area; no tree texture was added.')
     elif s.forests and not count['trees']:
@@ -988,7 +1038,8 @@ def generate_solids(s, progress, data_override=None):
         warnings.append(f"Skipped {count['skipped_invalid_features']} invalid building footprints from the source data.")
     if s.seam: warnings.append(f'{s.seam:.2f} mm seam gaps intentionally remove a narrow strip of geography at internal boundaries.')
     return parts,{'geometry_revision':GEOMETRY_REVISION,'frame_fit':frame_fit,
-                  'city_method':'mapped-parts-roofs-v1','dem':dem_meta,'osm':osm_meta,'features':count,'warnings':warnings,'joints':joints,
+                  'colour_method':'surface-core-v1' if s.multicolour else None,
+                  'custom_buildings':custom_count,'city_method':'mapped-parts-roofs-v1','dem':dem_meta,'osm':osm_meta,'features':count,'warnings':warnings,'joints':joints,
                   'elevation_m':[float(dem.min()),float(dem.max())],'ground_dimensions_m':[geo.ground_width,geo.ground_height],
                   'scale_mm_per_m':geo.scale,'grid':[nx,ny],'grid_spacing_mm':[float(xs[1]-xs[0]),float(ys[1]-ys[0])],
                   'terrain_method':'contour-bands' if s.terrain_style == 'terraced' else 'heightfield',

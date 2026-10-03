@@ -7,8 +7,10 @@ from PyInstaller.utils.hooks import collect_all
 root = Path(SPECPATH).parent
 sys.path.insert(0, str(root))
 from scripts.build_desktop_notices import write_notices
+from desktop.version import BUNDLE_VERSION
 ui = Path(os.environ.get('CONTOUR_UI_DIR', root / 'dist')).resolve()
 assets = [(str(ui), 'dist'), (str(root / 'LICENSE'), '.'), (str(write_notices(root)), '.')]
+assets += [(str(root / 'backend' / 'bambu-defaults.json'), 'backend')]
 binaries = []
 hidden = ['backend.app', 'backend.export', 'backend.worker', 'backend.buildings', 'uvicorn.logging', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan.on']
 for package in ('webview', 'overturemaps', 'pyarrow', 'manifold3d', 'pyproj'):
@@ -32,5 +34,5 @@ engine = EXE(epyz, e.scripts, [], exclude_binaries=True, name='ContourEngine', d
 coll = COLLECT(exe, engine, a.binaries, e.binaries, a.datas, e.datas, strip=False, upx=False, name='Contour Studio')
 if sys.platform == 'darwin':
     app = BUNDLE(coll, name='Contour Studio.app', icon=str(root / 'desktop' / 'icon.icns'), bundle_identifier='studio.contour.desktop',
-                 info_plist={'CFBundleShortVersionString': '1.0.0', 'NSHighResolutionCapable': True,
+                 info_plist={'CFBundleShortVersionString': BUNDLE_VERSION, 'CFBundleVersion': BUNDLE_VERSION, 'NSHighResolutionCapable': True,
                              'NSAppTransportSecurity': {'NSAllowsLocalNetworking': True}})

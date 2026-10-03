@@ -26,6 +26,7 @@ def runtime(monkeypatch, starts=True, busy=False):
     monkeypatch.setitem(sys.modules, 'webview', view)
     monkeypatch.setitem(sys.modules, 'uvicorn', SimpleNamespace(Config=Mock(), Server=lambda _: server))
     monkeypatch.setitem(sys.modules, 'backend.app', SimpleNamespace(app=object()))
+    monkeypatch.setattr('desktop.menus.studio_menu', lambda window: ['studio-menu'])
     stop_workers = Mock()
     monkeypatch.setitem(sys.modules, 'backend.worker', SimpleNamespace(stop_workers=stop_workers))
     return view, server, socket, stop_workers
@@ -38,7 +39,7 @@ def test_native_workspace_keeps_drafts_and_uses_webview2(monkeypatch, tmp_path):
     desktop.run_application(tmp_path)
     assert view.create_window.call_args.args[1] == 'http://127.0.0.1:18767'
     assert view.start.call_args.kwargs == {
-        'gui': 'edgechromium', 'private_mode': False, 'storage_path': str(tmp_path / 'browser')}
+        'menu': ['studio-menu'], 'gui': 'edgechromium', 'private_mode': False, 'storage_path': str(tmp_path / 'browser')}
     assert view.settings['ALLOW_DOWNLOADS']
     assert server.should_exit
     stop_workers.assert_called_once()

@@ -31,6 +31,37 @@ class LocationMarker(BaseModel):
     rise: float = Field(3, ge=0.5, le=20)
 
 
+class CustomBuilding(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False, str_strip_whitespace=True)
+    id: str = Field(min_length=1, max_length=64)
+    label: str = Field('Building', min_length=1, max_length=64)
+    height: float = Field(8, ge=2, le=300)
+    points: list[tuple[float, float]] = Field(min_length=3, max_length=100)
+
+    @model_validator(mode='after')
+    def valid_outline(self):
+        from shapely.geometry import Polygon
+        from .world import unwrap
+        if any(not (-180 <= x <= 180 and -90 <= y <= 90) for x,y in self.points):
+            raise ValueError('Building coordinates are outside the world.')
+        polygon = Polygon([(unwrap(x,self.points[0][0]),y) for x,y in self.points])
+        if not polygon.is_valid or polygon.area < 1e-14:
+            raise ValueError('Building outlines must not cross themselves or have zero area.')
+        return self
+
+
+class ReferenceImage(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+    data: str = Field(max_length=1_500_000, pattern=r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$')
+    bounds: Bounds
+    x: float = Field(500, ge=-5000, le=5000)
+    y: float = Field(500, ge=-1e9, le=1e9)
+    width: float = Field(1000, ge=10, le=10000)
+    aspect: float = Field(1, ge=0.05, le=20)
+    rotation: float = Field(0, ge=-360, le=360)
+    opacity: float = Field(0.6, ge=0, le=1)
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False, str_strip_whitespace=True)
     name: str = Field('Keswick', min_length=1, max_length=64)
@@ -72,11 +103,13 @@ class Settings(BaseModel):
     water_bank: float = Field(0, ge=0, le=3)
     forests: bool = False
     forest_style: Literal['canopy','trees'] = 'canopy'
+    tree_type: Literal['broadleaf','conifer','mixed'] = 'mixed'
+    forest_grouping: Literal['groves','even'] = 'groves'
     tree_size: float = Field(2.4, ge=1.2, le=6)
     tree_height: float = Field(1.8, ge=0.4, le=5)
     tree_spacing: float = Field(4, ge=1.5, le=12)
     fields: bool = False
-    field_style: Literal['flat','furrows'] = 'furrows'
+    field_style: Literal['flat','furrows','rounded'] = 'rounded'
     field_spacing: float = Field(2.5, ge=1, le=8)
     field_height: float = Field(0.35, ge=0.2, le=1.5)
     field_angle: float = Field(25, ge=0, le=180)
@@ -98,6 +131,8 @@ class Settings(BaseModel):
     building_min_width: float = Field(0.8, ge=0.4, le=4)
     building_min_height: float = Field(1.2, ge=0.2, le=10)
     building_style: Literal['realistic','uniform','stepped'] = 'realistic'
+    custom_buildings: list[CustomBuilding] = Field(default_factory=list, max_length=500)
+    reference_image: ReferenceImage | None = None
     markers: list[LocationMarker] = Field(default_factory=list, max_length=20)
     landmarks: bool = False
     marker: bool = False
@@ -110,6 +145,8 @@ class Settings(BaseModel):
     def geometry_limits(self):
         if len({m.id for m in self.markers}) != len(self.markers):
             raise ValueError('Each special place must have a unique ID.')
+        if len({b.id for b in self.custom_buildings}) != len(self.custom_buildings):
+            raise ValueError('Each added building must have a unique ID.')
         w = self.frame_width if self.frame_mode != 'none' else 0
         if 2*w >= min(self.width,self.height)-20:
             raise ValueError('Frame leaves too little room for the map.')

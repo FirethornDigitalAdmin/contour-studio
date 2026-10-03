@@ -119,3 +119,9 @@
   .project-heading .view-switch { width: 100%; }
   .view-switch button { flex: 1; padding-inline: 5px; }
 }
+/* Four workspace views stay readable and reachable on narrow screens. */
+@media (max-width:800px) {
+  .project-heading .workspace-actions { flex-wrap:wrap; min-width:0; }
+  .project-heading .workspace-actions .view-switch { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; flex-basis:100%; min-width:0; }
+  .project-heading .workspace-actions .view-switch button { min-width:0; justify-content:center; }
+}

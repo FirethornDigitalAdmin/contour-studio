@@ -206,7 +206,7 @@ def test_field_ridges_resolve_mapped_corner_contacts_before_extrusion():
         return np.zeros((len(ys),len(xs))),[
             ('field',box(20,20,22,21.25),{}),
             ('field',box(22,21.25,24,22.5),{})]
-    parts,meta=generate_solids(settings(fields=True,field_angle=0,water=False,
+    parts,meta=generate_solids(settings(fields=True,field_style='furrows',field_angle=0,water=False,
                                       buildings=False,roads='none'),quiet,neighbouring_fields)
     assert meta['features']['field_strips']==1
     raw=parts[0]['solid'].to_mesh64()
@@ -235,3 +235,51 @@ def test_actual_landcover_is_requested_and_parsed_with_holes(monkeypatch):
     features,_=geo.vectors(quiet)
     assert [kind for kind,_,_ in features]==['forest','field','grass']
     assert len(features[0][1].interiors)==1
+
+
+@pytest.mark.parametrize('tree_type',['broadleaf','conifer','mixed'])
+@pytest.mark.parametrize('grouping',['groves','even'])
+def test_custom_tree_shapes_and_grouping_export_connected_stl(tmp_path,tree_type,grouping):
+    s=settings(forests=True,forest_style='trees',tree_type=tree_type,
+               forest_grouping=grouping,fields=True,field_style='rounded')
+    parts,meta=generate_solids(s,quiet,source)
+    assert meta['features']['trees']>0 and meta['features']['field_strips']>0
+    mesh=as_trimesh(parts[0]['solid'])
+    assert mesh.is_volume and len(mesh.split())==1
+    path=tmp_path/'landscape.stl'
+    mesh.export(path)
+    assert trimesh.load_mesh(path,process=True).is_volume
+
+
+def test_grouped_woodland_and_tree_types_change_the_geometry():
+    s=settings(forests=True,forest_style='trees',buildings=False,roads='none',water=False)
+    volumes={}
+    counts={}
+    for grouping in ['groves','even']:
+        for tree_type in ['broadleaf','conifer','mixed']:
+            parts,meta=generate_solids(s.model_copy(update={'forest_grouping':grouping,'tree_type':tree_type}),quiet,source)
+            volumes[grouping,tree_type]=parts[0]['solid'].volume()
+            counts[grouping]=meta['features']['trees']
+    assert counts['groves']<counts['even']
+    assert volumes['groves','conifer']<volumes['groves','mixed']<volumes['groves','broadleaf']
+
+
+def test_rounded_rows_keep_boundaries_and_round_the_ends_of_square_rows():
+    from backend.geometry import landcover_geometry
+    field=box(10,10,40,40)
+    exclusion=box(20,20,30,30)
+    original=prism(box(0,0,50,50),4)
+    sample=lambda points: np.full(len(points),4.)
+    results={}
+    for style in ['rounded','furrows','flat']:
+        results[style]=landcover_geometry(Polygon(),field,exclusion,original,
+            settings(fields=True,field_style=style,field_angle=0),sample,20)
+    rounded=results['rounded']; square=results['furrows']
+    assert 0<rounded[1].volume()<square[1].volume()
+    assert rounded[6].difference(field.difference(exclusion).buffer(.005)).area<1e-6
+    assert rounded[6].area<square[6].area
+    assert len(rounded[6].geoms[0].exterior.coords)>len(square[6].geoms[0].exterior.coords)
+    assert results['flat'][1].is_empty()
+    assert Settings().field_style=='rounded'
+    for change in [{'field_style':'bad'},{'tree_type':'bad'},{'forest_grouping':'bad'}]:
+        with pytest.raises(ValueError): Settings(**change)

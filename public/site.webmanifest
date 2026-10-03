@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Contour Studio",
+  "short_name": "Contour Studio",
+  "description": "Free, open-source software for turning places you love into 3D-printable map art.",
+  "lang": "en-GB",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#fcfbf7",
+  "theme_color": "#263e36",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

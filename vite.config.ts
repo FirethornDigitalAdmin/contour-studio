@@ -7,10 +7,10 @@ export default defineConfig(({ mode }) => ({
     __HOSTED_WORKSPACE__: JSON.stringify(mode === "hosted"),
     __GEOCODER_URL__: JSON.stringify(process.env.VITE_GEOCODER_URL || "https://nominatim.openstreetmap.org/search"),
   },
-  build: { outDir: mode === "hosted" ? "dist-hosted" : "dist" },
+  build: { outDir: mode === "hosted" ? "dist-hosted" : "dist", manifest: mode === "hosted" },
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { "/api": "http://127.0.0.1:8765" },
+    proxy: { "/api": process.env.CONTOUR_API_URL || "http://127.0.0.1:8765" },
   },
 }));

@@ -6,6 +6,7 @@
 .site-brand-light { font-weight: 400; }
 .site-header nav { display: flex; align-items: center; flex-wrap: wrap; gap: 30px; font-size: .875rem; }
 .site-header nav > a { color: #26372f; }
+.site-creator { padding-block: 80px; border-bottom: 1px solid #dfe3d9; scroll-margin-top: 24px; }
 .coffee-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .site-header .coffee-link { border: 1px solid #d9ddd2; border-radius: 7px; padding: 10px 14px; }
 .site-hero { display: grid; grid-template-columns: .95fr 1.15fr; align-items: center; gap: 40px; padding-block: 40px 68px; }
@@ -21,6 +22,12 @@
 .site-principles { border-block: 1px solid #dfe3d9; background: #f0f2e9; }
 .site-principles > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 23px; }
 .site-principles span { display: flex; align-items: center; gap: 11px; font-size: .875rem; }
+.site-at-home { padding-top: 78px; }
+.site-at-home .site-section-heading { margin-bottom: 30px; }
+.site-wall-art { margin: 0; }
+.site-wall-art picture { display: block; overflow: hidden; border-radius: 12px; background: #e6dfd2; }
+.site-wall-art img { display: block; width: 100%; height: auto; }
+.site-wall-art figcaption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 20px; padding-top: 14px; color: var(--site-muted); font-size: .8125rem; }
 .site-how { padding-block: 90px; }
 .site-section-heading h2, .site-thanks h2 { font-size: clamp(2rem, 3vw, 2.6rem); line-height: 1.18; font-weight: 500; letter-spacing: -1px; margin: 0 0 18px; }
 .site-section-heading > p:last-child { color: var(--site-muted); max-width: 650px; }
@@ -60,6 +67,7 @@
 .site-coffee-button:hover { background: #ffda63; }
 .site-footer { padding-block: 24px; border-top: 1px solid #dfe3d9; display: flex; justify-content: space-between; gap: 24px; font-size: .8125rem; color: var(--site-muted); }
 .site-footer > div { display: flex; gap: 24px; flex-wrap: wrap; }
+.site-footer > div { align-items: center; }
 .site-footer a { color: var(--site-muted); }
 .site-skip { position: absolute; left: 20px; top: -100px; padding: 12px; z-index: 20; background: #fff; }
 .site-skip:focus { top: 10px; }
@@ -76,7 +84,8 @@
 @media (max-width: 700px) {
   .site-width { width: calc(100% - 40px); }
   .site-header { min-height: 90px; flex-wrap: wrap; gap: 14px; padding-block: 20px; }
-  .site-header nav { width: 100%; justify-content: space-between; gap: 12px; }
+  .site-header nav { width: 100%; justify-content: flex-start; gap: 14px 20px; }
+  .site-creator { padding-block: 50px; }
   .site-header .coffee-link { padding: 9px; }
   .site-hero { grid-template-columns: 1fr; gap: 38px; padding-block: 35px 44px; }
   .site-hero h1 { font-size: clamp(3rem, 11vw, 4.2rem); letter-spacing: -2px; }
@@ -84,6 +93,11 @@
   .site-lead { font-size: 1rem; }
   .site-principles > div { flex-wrap: wrap; gap: 16px 24px; padding-block: 22px; }
   .site-principles span { font-size: .875rem; }
+  .site-at-home { padding-top: 50px; }
+  .site-at-home .site-section-heading { margin-bottom: 22px; }
+  .site-wall-art picture { border-radius: 9px; aspect-ratio: 4 / 5; }
+  .site-wall-art img { height: 100%; object-fit: cover; object-position: 53% center; }
+  .site-wall-art figcaption { font-size: .75rem; padding-top: 12px; }
   .site-how { padding-block: 55px; }
   .site-how ol, .site-download-grid { grid-template-columns: 1fr; gap: 28px; }
   .site-how li { border-bottom: 1px solid #dfe3d9; padding-bottom: 24px; }

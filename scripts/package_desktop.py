@@ -53,13 +53,17 @@ def main():
                     }
                     layout['.']['icvp'] = {
                         'viewOptionsVersion': 1, 'backgroundType': 2,
+                        'backgroundColorRed': 1.0, 'backgroundColorGreen': 1.0, 'backgroundColorBlue': 1.0,
+                        'scrollPositionX': 0.0, 'scrollPositionY': 0.0,
                         'backgroundImageAlias': image_alias.to_bytes(),
                         'iconSize': 96.0, 'textSize': 12.0,
                         'gridSpacing': 100.0, 'gridOffsetX': 0.0, 'gridOffsetY': 0.0,
                         'arrangeBy': 'none', 'labelOnBottom': True,
                         'showItemInfo': False, 'showIconPreview': True,
                     }
-                    layout['.']['vstl'] = ('type', b'icnv')
+                    # Finder ignores icon-view options without its layout version record.
+                    layout['.']['vSrn'] = ('long', 1)
+                    layout['.']['icvl'] = ('type', b'icnv')
                     layout['Contour Studio.app']['Iloc'] = (160, 130)
                     layout['Applications']['Iloc'] = (470, 130)
 

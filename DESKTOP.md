@@ -10,8 +10,8 @@ Use the installer matching your computer. Windows x64 and Apple Silicon candidat
 
 | Computer | File | Install |
 | --- | --- | --- |
-| Apple Silicon Mac | `Contour-Studio-macOS-arm64.dmg` | Open the disk image, drag Contour Studio to Applications, then open it. |
-| Intel Mac | `Contour-Studio-macOS-x86_64.dmg` | Open the disk image, drag Contour Studio to Applications, then open it. |
+| Apple Silicon Mac | `Contour-Studio-macOS-arm64.dmg` | Open the disk image. Its installation window shows Contour Studio on the left, an arrow in the middle and Applications on the right. Drag the app onto Applications, then open it from Applications. |
+| Intel Mac | `Contour-Studio-macOS-x86_64.dmg` | Open the disk image. Its installation window shows Contour Studio on the left, an arrow in the middle and Applications on the right. Drag the app onto Applications, then open it from Applications. |
 | Windows x64 | `Contour-Studio-Windows-x64-Setup.exe` | Run the installer, then open Contour Studio from the Start menu. |
 
 Python and Node.js are included or unnecessary for installed users. Internet is needed for map search, the basemap and uncached geographic data. Windows x64 requires Windows 10 or later. Setup checks for Microsoft WebView2, installs it only if missing, and verifies it before continuing. Stay connected to the internet for this step. If setup reports that WebView2 could not be installed, check the connection and retry; you can also install the [WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) directly, then retry setup. Existing runtimes are detected using [Microsoft's documented registry locations](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed).

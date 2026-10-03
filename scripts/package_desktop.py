@@ -31,13 +31,18 @@ def main():
         writable = stage.parent / (stage.name + '-layout.dmg')
         mount = stage.parent / (stage.name + '-mount')
         subprocess.run(['hdiutil', 'create', '-volname', 'Contour Studio', '-srcfolder', str(stage),
-                        '-ov', '-format', 'UDRW', str(writable)], check=True)
+                        '-ov', '-fs', 'HFS+', '-format', 'UDRW', str(writable)], check=True)
         try:
             subprocess.run(['hdiutil', 'attach', str(writable), '-mountpoint', str(mount),
                             '-nobrowse'], check=True)
             try:
                 from ds_store import DSStore
                 from mac_alias import Alias
+                # Resolve /var -> /private/var before constructing a volume-relative alias.
+                image_alias = Alias.for_file(str((mount / '.background' / 'installer.png').resolve()))
+                if image_alias.target.posix_path not in (b'/.background/installer.png', '/.background/installer.png'):
+                    raise SystemExit('Installer background reference must stay inside the disk image.')
+                image_alias.volume.posix_path = '/Volumes/Contour Studio'
                 # Write the layout directly so builds do not depend on Finder's cache.
                 with DSStore.open(str(mount / '.DS_Store'), 'w+') as layout:
                     layout['.']['bwsp'] = {
@@ -48,7 +53,7 @@ def main():
                     }
                     layout['.']['icvp'] = {
                         'viewOptionsVersion': 1, 'backgroundType': 2,
-                        'backgroundImageAlias': Alias.for_file(str(mount / '.background' / 'installer.png')).to_bytes(),
+                        'backgroundImageAlias': image_alias.to_bytes(),
                         'iconSize': 96.0, 'textSize': 12.0,
                         'gridSpacing': 100.0, 'gridOffsetX': 0.0, 'gridOffsetY': 0.0,
                         'arrangeBy': 'none', 'labelOnBottom': True,

@@ -1,4 +1,4 @@
-"""Check the frozen engine, real STL export and worker error IPC without network."""
+"""Check frozen geometry, worker IPC and a real online building download."""
 import json
 import os
 import subprocess
@@ -30,6 +30,19 @@ def main():
         assert result.returncode == 1
         assert json.loads(result.stdout.strip().splitlines()[-1])['type'] == 'error'
         print('PASS: frozen geometry engine exports a watertight STL/ZIP and preserves worker error IPC.')
+        # Do not inherit the developer machine's CA path: installers must carry
+        # their own trust store. This catches failures hidden by offline fixtures.
+        env.pop('SSL_CERT_FILE', None)
+        env.pop('SSL_CERT_DIR', None)
+        buildings = Path(tmp) / 'buildings.json'
+        result = subprocess.run([str(engine), 'backend.buildings',
+            json.dumps([-0.130, 51.506, -0.128, 51.507]), str(buildings)],
+            capture_output=True, text=True, env=env, timeout=240)
+        if result.returncode:
+            raise SystemExit(result.stderr + result.stdout)
+        online = json.loads(buildings.read_text())
+        assert online['complete'] and online['count'] > 0
+        print(f'PASS: packaged HTTPS/STAC/S3 downloads {online["count"]} live building outlines with certificate verification.')
 
 if __name__ == '__main__':
     main()

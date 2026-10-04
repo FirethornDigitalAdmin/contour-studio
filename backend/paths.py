@@ -3,6 +3,21 @@ import os
 import sys
 from pathlib import Path
 
+
+def configure_packaged_tls():
+    """Give frozen urllib/OpenSSL clients a portable, verified CA store.
+
+    Python's build-machine certificate path does not exist on user computers.
+    Preserve an explicitly configured trust store and pass the bundled store
+    through the environment so nested modelling helpers inherit it too.
+    """
+    if getattr(sys, 'frozen', False):
+        import certifi
+        os.environ.setdefault('SSL_CERT_FILE', certifi.where())
+
+
+configure_packaged_tls()
+
 RESOURCE_ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[1]))
 
 

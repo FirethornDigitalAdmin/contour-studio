@@ -3,7 +3,7 @@ import BrandMark from "./BrandMark";
 import CoffeeLink from "./CoffeeLink";
 import Creator, { CreatorLinks } from "./Creator";
 import HeroModel from "./HeroModel";
-import { downloadUrl, releaseUrl, repository } from "./distribution";
+import { downloadUrl, releaseTag, releaseUrl, repository } from "./distribution";
 import "./download-site.css";
 
 export default function DownloadSite() {
@@ -44,7 +44,7 @@ export default function DownloadSite() {
           <article><Monitor size={28} /><h3>Current local workspace</h3><p>Image tracing and the latest print fixes. Runs in your browser on your computer.</p><a className="site-button" href={downloadUrl("Contour-Studio-local.zip")}><Download size={17} />Download local workspace</a><p className="site-file-note">Python 3.12 required · Mac, Windows & Linux · .zip</p></article>
           <article className="site-source-download"><Code2 size={28} /><h3>Build your own</h3><p>Explore the code, change it or run from source.</p><a className="site-button site-button-outline" href={downloadUrl("Contour-Studio-source.zip")}><Download size={17} />Download source</a><p className="site-file-note">MIT licence · .zip</p></article>
         </div>
-        <div className="site-install-note"><p><strong>Desktop installers · v1.0.0-rc.1.</strong> The current local workspace and source downloads include image tracing and the latest print fixes. Community builds are unsigned. Mac may ask you to use Privacy & Security → Open Anyway; Windows may show an unknown-publisher prompt. Internet is needed to fetch map data. Model generation and project storage happen on your computer.</p><a href={releaseUrl} target="_blank" rel="noopener noreferrer">Release notes & installation help</a></div>
+        <div className="site-install-note"><p><strong>Desktop installers · {releaseTag}.</strong> The app and downloads include single maps, modular walls, jigsaw puzzles, image tracing and the unified project library. Community builds are unsigned. Mac may ask you to use Privacy & Security → Open Anyway; Windows may show an unknown-publisher prompt. Internet is needed to fetch map data. Model generation and project storage happen on your computer.</p><a href={releaseUrl} target="_blank" rel="noopener noreferrer">Release notes & installation help</a></div>
         <p className="site-browser-option">Want to explore first? <a href="#workspace">Open the free web designer</a>. Design in your browser, then generate the print files in the current local workspace.</p>
       </section>
       <section className="site-freedom" id="open-source" aria-labelledby="freedom-title"><div className="site-width site-freedom-grid"><div><p className="site-kicker">COMPLETELY FREE. COMPLETELY OPEN SOURCE.</p><h2 id="freedom-title">Do your thing.<br /><em>It’s yours to build on.</em></h2></div><div><p>Use it. Change it. Share it. Make something of your own. Contour Studio’s application code is released under the MIT licence, including permission for commercial use.</p><p>There’s no subscription, paid tier or generation fee. Keep the copyright and licence notice when sharing the software. Geographic data and third-party libraries keep their own licences and attribution requirements.</p><div className="site-actions"><a className="site-button site-button-light" href={repository} target="_blank" rel="noopener noreferrer"><Github size={19} />Public GitHub repository</a><a className="site-text-link" href={`${repository}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">Read the MIT licence</a></div></div></div></section>

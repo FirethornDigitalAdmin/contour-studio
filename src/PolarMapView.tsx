@@ -55,6 +55,7 @@ export default function PolarMapView({settings,editable=true,onBounds,placingMar
         <rect x="1" y="1" width="598" height="398" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/>
         {Array.from({length:Math.min(20,columns-1)},(_,i)=><path key={`c${i}`} d={`M ${(i+1)*600/columns} 0 V 400`} stroke="currentColor" opacity=".3"/>)}
         {Array.from({length:Math.min(20,rows-1)},(_,i)=><path key={`r${i}`} d={`M 0 ${(i+1)*400/rows} H 600`} stroke="currentColor" opacity=".3"/>)}
+        {(settings.trails??[]).map(t=><polyline key={t.id} points={t.points.map(([lon,lat])=>`${longitudeOffset(lon,b)/span*600},${(b.north-lat)/height*400}`).join(' ')} stroke="#b3472e" strokeWidth="3" fill="none"/>)}
       </svg>
       <span className="polar-north">{b.north.toFixed(5)}°</span><span className="polar-south">{b.south.toFixed(5)}°</span>
       <span className="polar-west">{b.west.toFixed(5)}°</span><span className="polar-east">{b.east.toFixed(5)}°</span>

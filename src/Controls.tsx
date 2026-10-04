@@ -172,3 +172,19 @@ export function GridIcon({ columns, rows }: { columns: number; rows: number }) {
     </div>
   );
 }
+
+export function FeatureGroup({ heading, icon, description, checked, onChange, children }: {
+  heading: string; icon?: ReactNode; description: string; checked: boolean;
+  onChange: (checked: boolean) => void; children?: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const id = useId();
+  return <div className={`feature-group${checked ? " enabled" : ""}`} data-feature={heading}>
+    <div className="feature-group-heading">
+      <span className="feature-group-icon" aria-hidden="true">{icon}</span>
+      <div><strong>{heading}</strong><small>{checked ? description : "Off · Your settings are kept"}</small></div>
+      <label className="feature-group-toggle"><input type="checkbox" role="switch" aria-label={heading} checked={checked} onChange={e => onChange(e.target.checked)} /><span className="switch" aria-hidden="true" /></label>
+    </div>
+    {children && <><button type="button" className="feature-details-button" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)}>{expanded ? "Hide details" : "Edit details"}<ChevronDown size={14} aria-hidden="true" /></button><div id={id} className="feature-group-body" hidden={!expanded}>{!checked && <p className="hint">Switch on {heading.toLowerCase()} to include it in your artwork.</p>}{children}</div></>}
+  </div>;
+}

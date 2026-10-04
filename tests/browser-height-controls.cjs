@@ -1,0 +1,42 @@
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const assert=require('node:assert/strict');
+const { reveal }=require('./ui-helpers.cjs');
+(async()=>{
+ const browser=await chromium.launch({headless:true,channel:'chrome'});
+ const page=await browser.newPage({baseURL:process.env.APP_URL||'http://127.0.0.1:8765',viewport:{width:1440,height:1000}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ try{
+  await page.route('**/api/active-job',r=>r.fulfill({json:null}));
+  await page.goto('/');
+  const button=name=>page.getByRole('button',{name,exact:true,includeHidden:true});
+  const control=name=>page.getByLabel(name,{exact:true});
+  const waitSetting=(key,value)=>page.waitForFunction(([k,v])=>JSON.parse(localStorage.getItem('contour-studio.draft.v1')||'{}').settings?.[k]===v,[key,value]);
+  const settings=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('contour-studio.draft.v1')).settings);
+  await button('Make it yours').click();
+  await reveal(page,button('Much flatter'));await button('Much flatter').click();await waitSetting('land_variation',.5);
+  assert.equal((await settings()).land_variation,.5);
+  const slider=control('Custom land height variation');
+  await slider.fill('0');await waitSetting('land_variation',0);assert.equal((await settings()).land_variation,0);
+  await button('Slightly flatter').click();await waitSetting('land_variation',.75);assert.equal((await settings()).land_variation,.75);
+  const contour=control('Frame contour');await reveal(page,contour);
+  await contour.selectOption('minimum');await control('Height above land · mm').fill('1.5');await waitSetting('frame_clearance',1.5);
+  assert.equal((await settings()).frame_contour,'minimum');
+  await page.reload();await contour.waitFor({state:'attached'});
+  assert.equal((await settings()).land_variation,.75);assert.equal((await settings()).frame_clearance,1.5);
+  await reveal(page,contour);await contour.selectOption('follow');
+  assert.equal(await control('Frame rise · mm').count(),0);
+  await page.setViewportSize({width:390,height:844});await reveal(page,contour);
+  await page.screenshot({path:'data/height-controls-mobile.png',fullPage:true});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  const job=await (await page.request.get('/api/jobs/frame-contour-follow-fixture')).json();assert.equal(job.status,'complete');
+  await page.addInitScript(job=>localStorage.setItem('contour-studio.draft.v1',JSON.stringify({version:1,settings:job.result.settings,jobId:job.id,step:2,view:'3d'})),job);
+  await page.setViewportSize({width:1440,height:1000});await page.reload();
+  await page.locator('.preview canvas').waitFor();
+  await page.locator('.canvas-message').waitFor({state:'hidden',timeout:60000});
+  await page.getByText(/Land height:.*Frame top:/).waitFor({state:'attached'});
+  assert.equal(await page.getByText('Updated printable geometry is available. Rebuild this model to apply it.').count(),0);
+  await page.screenshot({path:'data/height-contoured-preview.png',fullPage:true});
+  assert.deepEqual(errors,[]);
+  console.log('PASS height presets, full-flat slider, contour modes, clearance, saved reload, mobile layout and real contoured GLB preview.');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1)});

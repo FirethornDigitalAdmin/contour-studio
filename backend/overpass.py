@@ -25,6 +25,7 @@ ENDPOINTS = (
 CACHE_TTL = 7 * 86400
 TOTAL_SECONDS = 240
 MAX_REQUESTS = 48
+MAX_INITIAL_SECTIONS = 48
 LOG = logging.getLogger(__name__)
 
 
@@ -44,6 +45,13 @@ def selectors(settings):
     result = []
     if settings.roads != 'none':
         result.append('way[highway]')
+    if settings.railways:
+        result.append('way[railway~"^(rail|light_rail|tram|narrow_gauge|preserved|platform)$"]')
+        result.append('relation[railway=platform][type=multipolygon]')
+    if settings.urban_spaces:
+        result.extend(['nwr[leisure~"^(park|garden|recreation_ground|pitch|golf_course)$"]',
+                       'nwr[landuse~"^(recreation_ground|industrial|commercial|retail|railway)$"]',
+                       'nwr[amenity=parking]'])
     if settings.water:
         result.extend(['way[waterway]', 'nwr[natural=water]', 'nwr[water]'])
     if settings.buildings:
@@ -53,6 +61,8 @@ def selectors(settings):
     if settings.forests or settings.fields or settings.multicolour:
         result.extend(['nwr[landuse~"^(forest|farmland|meadow|grass)$"]',
                        'nwr[natural~"^(wood|grassland|scrub)$"]'])
+    if settings.forests:
+        result.extend(['node[natural=tree]', 'way[natural=tree_row]', 'nwr[natural=tree_group]'])
     return result
 
 
@@ -97,11 +107,11 @@ def split(bounds, columns=2, rows=2):
 
 
 class Downloader:
-    def __init__(self, cache_dir, headers, progress):
+    def __init__(self, cache_dir, headers, progress, budget_seconds=None):
         self.cache_dir = Path(cache_dir)
         self.headers = headers
         self.progress = progress
-        self.deadline = time.monotonic() + TOTAL_SECONDS
+        self.deadline = time.monotonic() + (TOTAL_SECONDS if budget_seconds is None else budget_seconds)
         self.requests = 0
         self.preferred = ENDPOINTS[0]
         self.cooldowns = {}
@@ -223,12 +233,17 @@ class Downloader:
         if cached is not None:
             self.progress(30, 'Using saved OpenStreetMap data')
             return cached
-        # Normally <=3 km across, capped at 16 initial requests for larger areas.
-        ground_w = longitude_span(b.west,b.east)*111320*math.cos(math.radians((b.north+b.south)/2))
-        ground_h = (b.north-b.south)*111320
-        cells = [cell for west,south,east,north in rectangles(b.west,b.south,b.east,b.north)
-                 for cell in split((south,west,north,east), min(4, max(1, math.ceil(ground_w/3000))),
-                                   min(4, max(1, math.ceil(ground_h/3000))))]
+        # Keep request footprints bounded even for large selections. A fixed
+        # 4x4 cap made individual queries grow without limit with the region.
+        plans = []
+        for west, south, east, north in rectangles(b.west,b.south,b.east,b.north):
+            ground_w = (east-west)*111320*math.cos(math.radians((north+south)/2))
+            ground_h = (north-south)*111320
+            plans.append(((south,west,north,east), max(1, math.ceil(ground_w/3000)),
+                          max(1, math.ceil(ground_h/3000))))
+        if sum(columns*rows for _,columns,rows in plans) > MAX_INITIAL_SECTIONS:
+            raise DownloadBudgetExceeded('Selected area needs too many detailed map sections; use terrain-only generation or select a smaller area.')
+        cells = [cell for bounds,columns,rows in plans for cell in split(bounds,columns,rows)]
         self.progress(22, f'Fetching OpenStreetMap data in {len(cells)} smaller sections')
         responses = []
         try:
@@ -237,7 +252,7 @@ class Downloader:
                     responses.append(self.section(client, filters, cell, 22+int(8*i/len(cells)),
                                                   f'Map section {i+1}/{len(cells)}'))
         except OverpassUnavailable as exc:
-            raise ValueError(
+            raise OverpassUnavailable(
                 'OpenStreetMap servers are busy or unavailable. Completed sections are saved; '
                 'click Generate model again to resume with roads, water and buildings enabled. '
                 f'Last attempt: {self.last_error}.'

@@ -54,11 +54,15 @@ try {
     $report.installed = $true
 
     $app = Start-Process -FilePath $executable -PassThru
-    $button = Wait-Button $app 'Make it yours'
+    $button = Wait-Button $app 'New project'
     $health = Invoke-RestMethod 'http://127.0.0.1:18767/api/health'
     if ($health.status -ne 'ok' -or $health.application -ne 'Contour Studio') { throw 'The installed local engine is unavailable.' }
     ([System.Windows.Automation.InvokePattern]$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
-    Wait-Button $app 'Review & make' | Out-Null
+    $typeButton = Wait-Button $app 'Single map'
+    ([System.Windows.Automation.InvokePattern]$typeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    $createButton = Wait-Button $app 'Create project'
+    ([System.Windows.Automation.InvokePattern]$createButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Wait-Button $app 'Design' | Out-Null
     $report.rendered = $true
 
     $window = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)
@@ -72,7 +76,9 @@ try {
     Start-Sleep -Seconds 2
     Close-App $app
     $app = Start-Process -FilePath $executable -PassThru
-    Wait-Button $app 'Review & make' | Out-Null
+    $resumeButton = Wait-Button $app 'Continue last project'
+    ([System.Windows.Automation.InvokePattern]$resumeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Wait-Button $app 'Design' | Out-Null
     $report.draftRestored = $true
     Close-App $app
     $app = $null
@@ -90,7 +96,9 @@ try {
     $updateScript = Join-Path $updateTrial 'install.ps1'
     python -c "from desktop.updater import WINDOWS_SCRIPT; from pathlib import Path; import sys; Path(sys.argv[1]).write_text(WINDOWS_SCRIPT)" $updateScript
     $app = Start-Process -FilePath $executable -PassThru
-    Wait-Button $app 'Review & make' | Out-Null
+    $resumeButton = Wait-Button $app 'Continue last project'
+    ([System.Windows.Automation.InvokePattern]$resumeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Wait-Button $app 'Design' | Out-Null
     $updatePlan = Join-Path $updateTrial 'plan.json'
     @{ pid = $app.Id; target = $install; installer = $installer; folder = $updateTrial;
        log = (Join-Path $trial 'update-install.log'); error = (Join-Path $trial 'update-error.txt') } |
@@ -106,7 +114,9 @@ try {
         if ($null -eq $app) { Start-Sleep -Milliseconds 500 }
     } while ($null -eq $app -and [DateTime]::UtcNow -lt $deadline)
     if ($null -eq $app) { throw 'The updater did not relaunch the installed app.' }
-    Wait-Button $app 'Review & make' | Out-Null
+    $resumeButton = Wait-Button $app 'Continue last project'
+    ([System.Windows.Automation.InvokePattern]$resumeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Wait-Button $app 'Design' | Out-Null
     $report.updateReplaced = $true
     Close-App $app
     $app = $null

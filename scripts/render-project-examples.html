@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Contour · generated model render</title>
+<style>html,body{margin:0;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '/node_modules/three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '/node_modules/three/examples/jsm/libs/meshopt_decoder.module.js';
+const query=new URLSearchParams(location.search), kind=query.get('kind');
+const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+renderer.setSize(960,700);renderer.setPixelRatio(2);renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color('#f4f3ec');
+scene.add(new THREE.HemisphereLight('#fffdf5','#939a87',1.8));
+const light=new THREE.DirectionalLight('#fff4e4',3.1);light.position.set(-300,500,300);light.castShadow=true;
+light.shadow.mapSize.set(2048,2048);light.shadow.camera.left=light.shadow.camera.bottom=-500;
+light.shadow.camera.right=light.shadow.camera.top=500;light.shadow.camera.far=1500;
+light.shadow.normalBias=.08;light.shadow.bias=-.00001;scene.add(light);
+const fill=new THREE.DirectionalLight('#e7f0ff',.5);fill.position.set(300,200,-200);scene.add(fill);
+const gltf=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(query.get('source'));
+const palette={ground:'#80A768',water:'#397CA7',forest:'#80A768',fields:'#E9DECA',roads:'#E9DECA',buildings:'#E9DECA',frame:'#2B4045',markers:'#2B4045'};
+let triangles=0,meshes=0;
+gltf.scene.traverse(child=>{
+ if(!(child instanceof THREE.Mesh))return;
+ const semantic=child.name.startsWith('MaterialVisual_')?child.name.split('_').pop():null;
+ const frame=semantic==='frame'||child.name.startsWith('FrameVisual_')||child.name.startsWith('Frame_')||child.name.startsWith('Holder_');
+ const colour=semantic?palette[semantic]:frame?palette.frame:'#ddd9c7';
+ if(!colour)throw new Error('Unrecognised material: '+child.name);
+ child.material=new THREE.MeshStandardMaterial({color:colour,roughness:.88,metalness:0,flatShading:true});
+ child.geometry.computeVertexNormals();child.castShadow=!semantic || semantic==='ground' || frame;child.receiveShadow=false;
+ triangles+=(child.geometry.index?.count??child.geometry.attributes.position.count)/3;meshes++;
+ // Separate existing pieces for legibility; never change the exported surfaces.
+ if(kind==='modular'){
+  const match=child.name.match(/(?:Frame_)?([AB])([12])(?:_|$)/);
+  if(match){child.position.x+=(Number(match[2])-1.5)*10;child.position.y+=(match[1]==='A'?.5:-.5)*10;}
+ }
+ if(kind==='jigsaw'){
+  const match=child.name.match(/Puzzle_(\d+)_(\d+)/);
+  if(!match)return;
+  const row=Number(match[1]),col=Number(match[2]);child.position.x+=(col-2.5)*1.8;child.position.y+=(2.5-row)*1.8;
+  if(row===4&&col===4){child.position.x+=8;child.position.y-=8;child.position.z+=7;}
+ }
+});
+const root=new THREE.Group();root.rotation.x=-Math.PI/2;root.add(gltf.scene);scene.add(root);
+root.updateMatrixWorld(true);let bounds=new THREE.Box3().setFromObject(root);
+const centre=bounds.getCenter(new THREE.Vector3());root.position.sub(centre);root.position.y-=bounds.min.y-centre.y;
+root.updateMatrixWorld(true);bounds=new THREE.Box3().setFromObject(root);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(3000,3000),new THREE.ShadowMaterial({opacity:.16}));floor.rotation.x=-Math.PI/2;floor.position.y=-.2;floor.receiveShadow=true;scene.add(floor);
+const camera=new THREE.PerspectiveCamera(32,960/700,10,2000);
+const target=bounds.getCenter(new THREE.Vector3()),direction=new THREE.Vector3(.48,1.28,.85).normalize();
+camera.position.copy(target).add(direction);camera.lookAt(target);camera.updateMatrixWorld(true);
+const inverse=camera.matrixWorldInverse, vfov=THREE.MathUtils.degToRad(camera.fov/2), hfov=Math.atan(Math.tan(vfov)*camera.aspect);
+let distance=1;
+for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
+ const corner=new THREE.Vector3(x,y,z).applyMatrix4(inverse);distance=Math.max(distance,Math.abs(corner.x)/Math.tan(hfov)+corner.z+1,Math.abs(corner.y)/Math.tan(vfov)+corner.z+1);
+}
+camera.position.copy(target).addScaledVector(direction,distance*1.13);camera.lookAt(target);
+renderer.render(scene,camera);
+window.modelRender={ready:true,meshes,triangles,source:query.get('source'),kind,sizeMm:bounds.getSize(new THREE.Vector3()).toArray()};
+</script></html>

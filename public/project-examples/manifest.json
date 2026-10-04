@@ -1,0 +1,66 @@
+[
+  {
+    "kind": "single",
+    "place": "Keswick",
+    "source": "/data/projects/6a594aaa-b867-447a-9167-e68770f2174a/preview.glb",
+    "ready": true,
+    "meshes": 7,
+    "triangles": 1059932,
+    "sizeMm": [
+      200,
+      71.55107116699223,
+      200
+    ],
+    "sha256": "d70a372fdf259b60ac5314c73f1ff4c2ed74820068256e4a79af310f2e441404",
+    "image": "single.webp",
+    "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
+  },
+  {
+    "kind": "modular",
+    "place": "Bolton upon Dearne",
+    "source": "/data/perimeter-separate-frame-final-verification/preview.glb",
+    "ready": true,
+    "meshes": 28,
+    "triangles": 1360340,
+    "sizeMm": [
+      410,
+      16.400754928588896,
+      290
+    ],
+    "sha256": "2f706586057020dbd1d3123c24bb78af4d7e2a6190f5c94d9f7e98b49ca5babd",
+    "image": "modular.webp",
+    "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
+  },
+  {
+    "kind": "jigsaw",
+    "place": "Keswick",
+    "source": "/data/projects/42b19cab-245d-4832-b494-cc1eec77c6dc/preview.glb",
+    "ready": true,
+    "meshes": 78,
+    "triangles": 1093726,
+    "sizeMm": [
+      200.575,
+      15.616647720336953,
+      200
+    ],
+    "sha256": "966bf1eb7559272cf2c4cb7a6b61f221634b4ddf7709a830f807d16d3e5a0a6f",
+    "image": "jigsaw.webp",
+    "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
+  },
+  {
+    "kind": "places",
+    "place": "Keswick & Bolton upon Dearne",
+    "source": "/data/projects/a5a13446-0fbc-4616-bf5a-7ff7ecbcc5fe/preview.glb",
+    "ready": true,
+    "meshes": 13,
+    "triangles": 1330728,
+    "sizeMm": [
+      226,
+      46.612239837646506,
+      120
+    ],
+    "sha256": "e8decf22c43b2fea0ea7fc2b6dea795cf859e35b04006d6d24be2ac930622748",
+    "image": "places.webp",
+    "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
+  }
+]

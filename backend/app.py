@@ -67,6 +67,19 @@ def validate_settings(s:Settings):
 
 def validate_marker_positions(s):
     """Check the exact printable badges before any source data is requested."""
+    if s.map_format in ('mini_tiles','hexagons'):
+        import math
+        for tile in s.map_tiles:
+            if s.map_format=='hexagons':
+                from shapely.geometry import Polygon
+                w=s.tile_size;h=w*math.sqrt(3)/2
+                source=s.model_copy(update=dict(bounds=tile.bounds,width=w,height=h,frame_mode='none'))
+                geo=Geography(source)
+                hexagon=Polygon([(w,h/2),(.75*w,h),(.25*w,h),(0,h/2),(.25*w,0),(.75*w,0)]).buffer(-s.tolerance)
+                for marker in tile.markers:
+                    if not hexagon.covers(affinity.translate(marker_shape(marker.symbol,marker.size),*geo.point(marker.lon,marker.lat))):raise HTTPException(422,f'Tile {tile.name}: marker {marker.label} is too close to a hexagon edge.')
+            validate_marker_positions(s.model_copy(update=dict(map_format='artwork',bounds=tile.bounds,markers=tile.markers,marker=False,width=s.tile_size,height=s.tile_size*(math.sqrt(3)/2 if s.map_format=='hexagons' else 1),frame_mode='none')))
+        return
     markers=list(s.markers)
     if s.marker:
         markers.append(LocationMarker(id='legacy',label='Custom marker',symbol='pin',
@@ -84,6 +97,32 @@ def validate_marker_positions(s):
 
 TRACING_LOCK = Lock()
 TRACING_CACHE = {}
+
+
+@app.post('/api/trails')
+def mapped_trails(s:Settings):
+    import math
+    source=s.model_copy(update=dict(map_format='artwork',roads='raised',buildings=False,water=False,forests=False,fields=False,landmarks=False,multicolour=False,railways=False,urban_spaces=False,frame_mode='none'))
+    if s.map_format in ('mini_tiles','hexagons'):source=source.model_copy(update=dict(width=s.tile_size,height=s.tile_size*(math.sqrt(3)/2 if s.map_format=='hexagons' else 1)))
+    geo=Geography(source)
+    try:features,metadata=geo.vectors(lambda *args:None)
+    except Exception as exc:raise HTTPException(502,'Mapped paths could not be downloaded. Import a GPX route or draw on the map.') from exc
+    paths=[]
+    for kind,line,tags in features:
+        if kind!='road' or tags.get('highway') not in ('path','footway','cycleway','bridleway','track','steps','pedestrian'):continue
+        segments=[line] if line.geom_type=='LineString' else list(getattr(line,'geoms',[]))
+        for index,segment in enumerate(segments):
+            if segment.geom_type!='LineString':continue
+            points=[]
+            for x,y in segment.simplify(.1,preserve_topology=True).coords:
+                mx=geo.x0+(x-geo.inset)/geo.map_width*(geo.x1-geo.x0);my=geo.y0+(y-geo.inset)/geo.map_height*(geo.y1-geo.y0)
+                lon=(math.degrees(mx/6378137)+180)%360-180
+                lat=math.degrees(my/6378137) if geo.polar else math.degrees(2*math.atan(math.exp(my/6378137))-math.pi/2)
+                points.append([lon,lat])
+            if 2<=len(points)<=10000:paths.append({'id':str(tags.get('_osm_id',len(paths)))+f'-{index}', 'name':tags.get('name',tags.get('ref',tags.get('highway','Mapped path'))),'points':points})
+            if len(paths)>=250:break
+        if len(paths)>=250:break
+    return {'paths':paths,'attribution':metadata.get('provider','OpenStreetMap')}
 
 
 @app.post('/api/footprints')
@@ -106,7 +145,7 @@ def load_tracing_footprints(s:Settings):
     from shapely.geometry import mapping
     from shapely.ops import transform
     # Reuse the exact source footprints used by generation, without terrain.
-    source=s.model_copy(update=dict(roads='none',water=False,forests=False,fields=False,
+    source=s.model_copy(update=dict(railways=False,urban_spaces=False,roads='none',water=False,forests=False,fields=False,
                                    multicolour=False,landmarks=False,buildings=True))
     geo=Geography(source)
     try:

@@ -13,6 +13,8 @@ export function validBounds(b: Bounds) {
 export const insideBounds = (lon: number, lat: number, b: Bounds) => longitudeOffset(lon,b)>0 && longitudeOffset(lon,b)<longitudeSpan(b) && lat>b.south && lat<b.north;
 
 export function artworkRatio(s: Settings) {
+  if(s.map_format==='mini_tiles')return 1;
+  if(s.map_format==='hexagons')return 2/Math.sqrt(3);
   const frame = s.frame_mode === 'none' ? 0 : s.frame_width;
   return Math.max(0.05, (s.width - 2 * frame) / Math.max(1, s.height - 2 * frame));
 }
@@ -52,4 +54,12 @@ export function placeBounds(lon: number, lat: number, ratio: number): Bounds {
   const dw=Math.min(1.9,dh*ratio/Math.max(.001,Math.cos(lat*Math.PI/180)));
   const south=Math.max(-90,Math.min(90-dh,lat-dh/2));
   return {west:wrapLongitude(lon-dw/2), east:wrapLongitude(lon+dw/2), south, north:south+dh};
+}
+
+export const MAX_BUILDING_AREA_KM2 = 100;
+// Spherical area also handles selections crossing the date line.
+export function selectionAreaKm2(b: Bounds) {
+  const radians = Math.PI / 180;
+  return 6371.0088 ** 2 * longitudeSpan(b) * radians *
+    (Math.sin(b.north * radians) - Math.sin(b.south * radians));
 }

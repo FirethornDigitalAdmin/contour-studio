@@ -86,3 +86,37 @@ def test_city_roofs_survive_the_export_geometry_pipeline():
     assert as_trimesh(parts[0]['solid']).is_volume
     assert meta['features']['mapped_roofs']==1 and meta['features']['mapped_parts']==1
     assert meta['city_method']=='mapped-parts-roofs-v1'
+
+
+def test_large_area_omits_mapped_buildings_without_changing_preferences(monkeypatch):
+    from backend.world import selection_area_km2, MAX_BUILDING_AREA_KM2
+    from backend.geodata import Downloader
+    s = Settings(bounds=Bounds(west=0, east=.2, south=0, north=.2), building_source='combined')
+    assert selection_area_km2(s.bounds) > MAX_BUILDING_AREA_KM2
+    requested = []
+    def download(self, settings):
+        requested.append(settings.buildings)
+        return {'elements': [{'type': 'way', 'id': 1, 'tags': {'building': 'yes'},
+            'geometry': [{'lon': .05, 'lat': .05}, {'lon': .06, 'lat': .05},
+                         {'lon': .06, 'lat': .06}, {'lon': .05, 'lat': .05}]}]}
+    monkeypatch.setattr(Downloader, 'download', download)
+    def unexpected(*args):
+        pytest.fail('Large selections must not download Overture buildings')
+    monkeypatch.setattr(buildings, 'download', unexpected)
+    features, meta = Geography(s).vectors(lambda *args: None)
+    assert features == []
+    assert requested == [False]
+    assert meta['building_detail_omitted']
+    assert s.buildings  # Shrinking the selection restores the user's preference.
+    smaller = s.model_copy(update={'bounds': Bounds(west=0, east=.02, south=0, north=.02), 'building_source': 'osm'})
+    features, meta = Geography(smaller).vectors(lambda *args: None)
+    assert requested == [False, True]
+    assert not meta['building_detail_omitted']
+
+
+def test_detail_area_matches_date_line_and_scales_at_poles():
+    from backend.world import selection_area_km2
+    normal = selection_area_km2(Bounds(west=0, east=.2, south=0, north=.2))
+    crossing = selection_area_km2(Bounds(west=179.9, east=-179.9, south=0, north=.2))
+    assert crossing == pytest.approx(normal)
+    assert selection_area_km2(Bounds(west=0, east=.2, south=89, north=89.2)) < normal / 50

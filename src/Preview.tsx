@@ -142,14 +142,14 @@ export default function Preview({ id, model, selected, onSelect, inspect = true,
     const lineMat = new THREE.LineDashedMaterial({ color: "#389598", dashSize: 3, gapSize: 3,
       transparent: true, opacity: 0.65, depthTest: false });
     const { columns, rows } = model.layout;
-    for (let i = 1; i < columns; i++) {
+    for (let i = 1; s.map_format==="artwork" && i < columns; i++) {
       const x = i * s.width / columns;
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(x, 0, z), new THREE.Vector3(x, s.height, z),
       ]), lineMat);
       line.computeLineDistances(); cuts.add(line);
     }
-    for (let i = 1; i < rows; i++) {
+    for (let i = 1; s.map_format==="artwork" && i < rows; i++) {
       const y = i * s.height / rows;
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, y, z), new THREE.Vector3(s.width, y, z),

@@ -10,7 +10,7 @@ from backend.config import Settings
 from backend.geometry import generate_solids, as_trimesh, union, frame_solid, prism, key_shape
 from shapely import affinity
 from backend.export import build_project
-from backend.geometry import source_height
+from backend.geometry import source_height, GEOMETRY_REVISION
 
 
 # Fixture coordinates remain independent of the workspace's starting location.
@@ -239,7 +239,7 @@ def test_separate_frame_lip_supports_clearanced_insert_and_rear_keys(radius,join
     terrain=union([p['solid'] for p in parts if p['kind']=='terrain'])
     frame=union([p['solid'] for p in parts if p['kind']=='frame'])
     fit=meta['frame_fit']; fw=s.frame_width
-    assert meta['geometry_revision']=='flat-colour-depth-v5'
+    assert meta['geometry_revision']==GEOMETRY_REVISION
     assert fit=={'lip_width_mm':2.0,'lip_height_mm':2.0,'clearance_mm':s.tolerance,'seat_angle_degrees':45,'assembly':'chamfered-insert'}
     assert (terrain^frame).volume()<1e-7
     # Away from a key, frame and insert share the same 45-degree seat.

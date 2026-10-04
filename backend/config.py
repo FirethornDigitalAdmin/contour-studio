@@ -62,8 +62,52 @@ class ReferenceImage(BaseModel):
     opacity: float = Field(0.6, ge=0, le=1)
 
 
+class Trail(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False, str_strip_whitespace=True)
+    id: str = Field(min_length=1,max_length=64)
+    name: str = Field('Trail',min_length=1,max_length=64)
+    points: list[tuple[float,float]] = Field(min_length=2,max_length=10000)
+    style: Literal['raised','engraved'] = 'raised'
+    width: float = Field(1.6,ge=.8,le=8)
+    height: float = Field(.8,ge=.2,le=2)
+    @model_validator(mode='after')
+    def coordinates(self):
+        if any(not(-180<=x<=180 and -90<=y<=90) for x,y in self.points): raise ValueError('Trail coordinates must be longitude, latitude.')
+        if len(set(self.points))<2:raise ValueError('A trail needs two distinct points.')
+        return self
+
+class MapTile(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False,str_strip_whitespace=True)
+    id: str = Field(min_length=1,max_length=64)
+    name: str = Field('Map tile',min_length=1,max_length=64)
+    bounds: Bounds
+    markers: list[LocationMarker] = Field(default_factory=list,max_length=20)
+    trails: list[Trail] = Field(default_factory=list,max_length=20)
+    custom_buildings: list[CustomBuilding] = Field(default_factory=list,max_length=500)
+    reference_image: ReferenceImage | None = None
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False, str_strip_whitespace=True)
+    project_type: Literal['single','modular','jigsaw'] = 'single'
+    map_format: Literal['artwork','mini_tiles','hexagons','jigsaw'] = 'artwork'
+    tile_size: float = Field(80,ge=60,le=160)
+    tile_gap: float = Field(6,ge=4,le=20)
+    collection_columns: int = Field(2,ge=1,le=6)
+    collection_rows: int = Field(2,ge=1,le=6)
+    active_tile: int = Field(0,ge=0,le=35)
+    map_tiles: list[MapTile] = Field(default_factory=list,max_length=36)
+    mount_mode: Literal['seat','magnets'] = 'seat'
+    magnet_diameter: float = Field(6,ge=3,le=12)
+    magnet_depth: float = Field(2,ge=1,le=4)
+    magnet_clearance: float = Field(.2,ge=.05,le=.5)
+    puzzle_style: Literal["classic", "rounded"] = "rounded"
+    puzzle_seed: int = Field(1,ge=1,le=9999)
+    puzzle_columns: int = Field(3,ge=2,le=10)
+    puzzle_rows: int = Field(2,ge=1,le=10)
+    puzzle_clearance: float = Field(.25,ge=.1,le=.6)
+    puzzle_relief: float = Field(.6,ge=.2,le=1.2)
+    trails: list[Trail] = Field(default_factory=list,max_length=20)
     name: str = Field('Keswick', min_length=1, max_length=64)
     bounds: Bounds = Field(default_factory=Bounds)
     width: float = Field(600, ge=60, le=2000)
@@ -77,6 +121,7 @@ class Settings(BaseModel):
     rows: int = Field(2, ge=1, le=20)
     base: float = Field(4, ge=3, le=20)
     exaggeration: float = Field(3, ge=0.1, le=30)
+    land_variation: float = Field(1, ge=0, le=1)
     smoothing: float = Field(0.8, ge=0, le=5)
     terrain_style: Literal['smooth','terraced','sculpted','faceted'] = 'smooth'
     contour_height: float = Field(1.2, ge=0.2, le=10)
@@ -87,6 +132,8 @@ class Settings(BaseModel):
     tolerance: float = Field(0.2, ge=0.05, le=0.5)
     labels: bool = True
     frame_mode: Literal['integrated','separate','none'] = 'integrated'
+    frame_contour: Literal['flat','minimum','follow'] = 'flat'
+    frame_clearance: float = Field(1, ge=0.2, le=5)
     frame_width: float = Field(10, ge=4, le=40)
     frame_depth: float = Field(5, ge=3, le=20)
     frame_height: float = Field(12, ge=1, le=60)
@@ -123,6 +170,16 @@ class Settings(BaseModel):
     colour_buildings: str = Field('#E9DECA', pattern=r'^#[0-9a-fA-F]{6}$')
     colour_frame: str = Field('#2B4045', pattern=r'^#[0-9a-fA-F]{6}$')
     colour_markers: str = Field('#2B4045', pattern=r'^#[0-9a-fA-F]{6}$')
+    railways: bool = False
+    railway_style: Literal['bed','tracks'] = 'tracks'
+    railway_width: float = Field(2.4, ge=0.8, le=8)
+    railway_height: float = Field(0.4, ge=0.2, le=1.5)
+    road_hierarchy: bool = False
+    urban_spaces: bool = False
+    supported_crossings: bool = False
+    bridge_openings: bool = True
+    preserve_building_gaps: bool = False
+    building_type_heights: bool = False
     buildings: bool = True
     building_source: Literal['combined','osm'] = 'combined'
     building_height: float = Field(8, ge=2, le=80)
@@ -147,6 +204,22 @@ class Settings(BaseModel):
             raise ValueError('Each special place must have a unique ID.')
         if len({b.id for b in self.custom_buildings}) != len(self.custom_buildings):
             raise ValueError('Each added building must have a unique ID.')
+        if len({t.id for t in self.trails})!=len(self.trails):raise ValueError('Trail IDs must be unique.')
+        if self.map_format in ('mini_tiles','hexagons'):
+            from .formats import collection_size
+            width,height=collection_size(self)
+            if abs(width-self.width)>.01 or abs(height-self.height)>.01:raise ValueError('Collection dimensions must match tile size, spacing and border.')
+            if len(self.map_tiles)!=self.collection_columns*self.collection_rows:raise ValueError('Assign a location to every collection tile.')
+            if self.active_tile>=len(self.map_tiles):raise ValueError('Choose a valid active collection tile.')
+            if len({t.id for t in self.map_tiles})!=len(self.map_tiles):raise ValueError('Map tile IDs must be unique.')
+            if self.mount_mode=='magnets' and self.base<self.magnet_depth+self.magnet_clearance+1.2:raise ValueError('Increase base thickness to leave 1.2 mm above the magnet pocket.')
+            if self.map_format=='hexagons' and self.tile_size+self.tile_gap>min(self.printer_width,self.printer_height)-2*self.margin:raise ValueError('Each hexagon holder must fit the usable build plate.')
+        if self.map_format=='jigsaw':
+            iw=self.width-(2*self.frame_width if self.frame_mode!='none' else 0);ih=self.height-(2*self.frame_width if self.frame_mode!='none' else 0)
+            tw,th=iw/self.puzzle_columns,ih/self.puzzle_rows
+            radius=min(tw,th)*.18
+            if min(tw,th)<30:raise ValueError('Jigsaw pieces need at least 30 mm before tabs.')
+            if tw+2.7*radius>self.printer_width-2*self.margin or th+2.7*radius>self.printer_height-2*self.margin:raise ValueError('Jigsaw pieces including tabs must fit the usable build plate. Increase piece count.')
         w = self.frame_width if self.frame_mode != 'none' else 0
         if 2*w >= min(self.width,self.height)-20:
             raise ValueError('Frame leaves too little room for the map.')
@@ -157,7 +230,7 @@ class Settings(BaseModel):
                 raise ValueError('Corner radius must not exceed frame width.')
             if max(self.inner_bevel,self.outer_bevel) >= self.frame_depth+self.frame_height:
                 raise ValueError('Bevel must be smaller than the total frame height.')
-            if self.frame_depth+self.frame_height+(0.55 if self.front_caption else 0) > self.printer_z:
+            if self.frame_contour != 'follow' and self.frame_depth+self.frame_height+(0.55 if self.front_caption else 0) > self.printer_z:
                 raise ValueError('Frame exceeds the printer height. Reduce frame depth or raised height.')
             if self.frame_mode == 'separate' and self.joints and self.frame_width < 6:
                 raise ValueError('Separate frames with joining keys require a frame width of at least 6 mm.')

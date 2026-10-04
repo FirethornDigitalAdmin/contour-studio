@@ -18,7 +18,10 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { layout, type Settings } from "./types";
-import { Field, NumberField, Toggle, Section, GridIcon } from "./Controls";
+import { Field, NumberField, Toggle, Section, FeatureGroup, GridIcon } from "./Controls";
+import FormatEditor, { MountEditor, TilePicker } from "./FormatEditor";
+import TrailEditor from "./TrailEditor";
+import { collection } from "./formats";
 import MarkerEditor from "./MarkerEditor";
 import TerrainStyles from "./TerrainStyles";
 import StyleLibrary from "./StyleLibrary";
@@ -146,13 +149,17 @@ export default function SettingsPanel({
   placing,
   onPlace,
 }: {
-  section: "size" | "style";
+  section: "format" | "location" | "details" | "frame" | "make" | "style";
   settings: Settings;
   onChange: (values: Partial<Settings>) => void;
   fits: boolean;
   placing: string | null;
   onPlace: (id: string | null) => void;
 }) {
+  const lastRoad = useRef<"raised" | "engraved">(s.roads === "none" ? "raised" : s.roads);
+  const lastFrame = useRef<"integrated" | "separate">(s.frame_mode === "none" ? "separate" : s.frame_mode);
+  if (s.roads !== "none") lastRoad.current = s.roads;
+  if (s.frame_mode !== "none") lastFrame.current = s.frame_mode;
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
   const [customPrinter, setCustomPrinter] = useState(false);
   const printerDetails = useRef<HTMLDetailsElement>(null);
@@ -248,17 +255,100 @@ export default function SettingsPanel({
     );
   }
   const activeStyle = styles.find(({ values }) => Object.entries(values).every(([key, value]) => s[key as keyof Settings] === value));
-  const featureSummary = [s.roads !== "none" && "Roads", s.water && "water", s.buildings && "buildings", s.landmarks && "landmarks", s.forests && "forests", s.fields && "fields"].filter(Boolean).join(", ") || "Terrain only";
-  if (section === "size")
+  const border = s.frame_mode === "none" ? 0 : 2 * s.frame_width;
+  const mapSize = `${(s.width - border).toFixed(1)} × ${(s.height - border).toFixed(1)} mm`;
+  if (section === "location") return null;
+  if (section === "frame" && s.map_format!=="artwork") return (<FeatureGroup heading="Frame & caption" icon={<Frame size={18}/>} checked={s.frame_mode !== "none"} onChange={enabled => onChange({ frame_mode: enabled ? "separate" : "none", front_caption: false })} description={collection(s) ? "Removable inserts & supporting surround" : "Puzzle tray & surround"}>
+    <MountEditor settings={s} onChange={onChange}/>
+    <div className="control-block">
+      {select("frame_mode","Frame",[["separate",s.map_format==='hexagons'?"Matching hexagon holders":"Supporting tray & surround"],["none","No frame / holders"]])}
+      {s.frame_mode!=='none'&&<>
+        {s.map_format!=='hexagons'&&number("frame_width","Surround width · mm",4,40,.5)}
+        {number("frame_depth","Holder base depth · mm",3,20,.5)}
+        {number("frame_height","Holder rim height · mm",1,12,.5)}
+        {number("tolerance","Insert edge clearance · mm",.05,.5,.05)}
+      </>}
+      <p className="hint" role="status">Overall size: {s.width.toFixed(1)} × {s.height.toFixed(1)} mm. Holders have flat supported bases. Test the fit before printing the full set.</p>
+    </div>
+  </FeatureGroup>);
+  if (section === "frame") return (<>
+      {s.map_format!=="artwork"&&<MountEditor settings={s} onChange={onChange}/>}
+      <FeatureGroup heading="Frame & caption" icon={<Frame size={18} />} checked={s.frame_mode !== "none"} onChange={enabled => onChange({ frame_mode: enabled ? lastFrame.current : "none", ...(enabled ? {} : { front_caption: false }) })} description={`${s.frame_mode === "separate" ? "Separate" : "Built-in"} · ${s.frame_width} mm border${s.front_caption ? " · Caption on" : ""}`}>
+      <p className="hint" role="status">Finished artwork: {s.width} × {s.height} mm, including the frame. Map area: {mapSize}.</p>
+
+        {select("frame_mode", "Frame", [
+          ...(s.map_format === "artwork" ? [["integrated", "Built into the map tiles"] as [string,string]] : []),
+          ["separate", s.map_format === "artwork" ? "Print as separate pieces" : "Matching holders / tray"],
+          ["none", "No frame"],
+        ])}
+        {s.frame_mode !== "none" && (
+          <>
+            {select("frame_contour", "Frame contour", [
+              ["flat", "Flat"],
+              ["minimum", "Follow land · minimum height"],
+              ["follow", "Follow land · all edges"],
+            ])}
+            <svg viewBox="0 0 300 75" role="img" aria-label="Flat and contoured frame profiles" style={{ width: "100%", maxHeight: 95 }}>
+              {(["flat", "minimum", "follow"] as const).map((mode, i) => <g key={mode} transform={`translate(${i * 100},0)`}>
+                <path d="M5 58 L20 50 L40 54 L65 24 L90 40 L90 65 L5 65Z" fill="currentColor" opacity=".15" />
+                <path d={mode === "flat" ? "M5 32H90" : mode === "minimum" ? "M5 32H53L65 18L90 34" : "M5 52L20 44L40 48L65 18L90 34"}
+                  fill="none" stroke="currentColor" strokeWidth={s.frame_contour === mode ? 4 : 2} />
+                <text x="48" y="74" textAnchor="middle" fontSize="9" fill="currentColor">{mode === "flat" ? "Flat" : mode === "minimum" ? "Minimum height" : "All edges"}</text>
+              </g>)}
+            </svg>
+            {s.frame_contour !== "flat" && <>
+              {number("frame_clearance", "Height above land · mm", 0.2, 5, 0.1)}
+              <p className="hint">{s.frame_contour === "minimum" ? "The selected base depth plus frame rise is the minimum height. Higher land lifts the border." : "Every edge follows the land. Base depth sets the minimum solid thickness; frame rise does not apply."} Clearance is measured at the inner edge; bevels add to the top height. The underside stays flat.</p>
+            </>}
+            <div className="frame-presets" role="group" aria-label="Frame profiles">
+              {frameProfiles.map(({ name, values }) => <button type="button" key={name}
+                disabled={Number(values.frame_width) > frameMaximum}
+                title={Number(values.frame_width) > frameMaximum ? "Choose a larger artwork to use this frame profile." : `${values.frame_width} mm border · ${Number(values.frame_depth) + Number(values.frame_height)} mm total height`}
+                aria-pressed={Object.entries(values).every(([key, value]) => s[key as keyof Settings] === value)}
+                onClick={() => change(values)}>{name}</button>)}
+            </div>
+            <p className="hint">{s.frame_mode === "separate" ? "Separate frames have a 2 mm retaining lip underneath. Its 45° seat matches the insert’s underside chamfer, keeping the printed edge supported. Leave the final frame section loose to slide the insert in, or lower it into a one-piece frame." : "The border forms part of the outer map tiles."} {s.frame_contour === "flat" ? `Total frame height: ${frameTotalHeight.toFixed(1)} mm.` : s.frame_contour === "minimum" ? `Minimum frame height: ${frameTotalHeight.toFixed(1)} mm.` : "Frame height is calculated from the land when generated."}</p>
+            {s.frame_mode === "separate" && <div className="frame-fit-summary"><Frame size={18} aria-hidden="true" /><span><strong>Supported slide-in insert</strong><small>2 mm lip · 45° seat · {s.tolerance.toFixed(2)} mm side clearance</small></span></div>}
+            {toggle("front_caption", "Name & coordinates on frame")}
+            {s.front_caption && <p className="caption-preview"><strong>{s.name || "Your artwork name"}</strong><small>{Math.abs((s.bounds.north + s.bounds.south) / 2).toFixed(4)}° {(s.bounds.north + s.bounds.south) / 2 >= 0 ? "N" : "S"} · {Math.abs(centreLongitude(s.bounds)).toFixed(4)}° {centreLongitude(s.bounds) >= 0 ? "E" : "W"}</small><span>Printed on the bottom border</span></p>}
+            <details className="advanced">
+              <summary>Frame dimensions & profile</summary>
+              <div className="two-col">
+                {number("frame_width", "Border width · mm", frameMinimum, frameMaximum, 0.5, s.frame_mode === "separate" && s.joints ? "At least 6 mm leaves room for the joining keys." : undefined)}
+                {s.frame_contour !== "follow" && number("frame_height", "Frame rise · mm", 1, 60, 0.5)}
+                {number("frame_depth", "Base depth · mm", 3, 20, 0.5)}
+                {number("corner_radius", "Corner radius · mm", 0, Math.floor(Math.min(15, s.frame_width) * 2) / 2, 0.5)}
+                {number("inner_bevel", "Inner bevel · mm", 0, Math.max(0, Math.floor(Math.min(4, s.frame_width - s.outer_bevel - 0.1, frameTotalHeight - 0.1) * 10) / 10), 0.1)}
+                {number("outer_bevel", "Outer bevel · mm", 0, Math.max(0, Math.floor(Math.min(4, s.frame_width - s.inner_bevel - 0.1, frameTotalHeight - 0.1) * 10) / 10), 0.1)}
+                {s.frame_mode === "separate" && number("tolerance", "Insert clearance · mm", 0.05, 0.5, 0.05, "Side clearance between the insert and frame wall. Print the fit-test pieces first.")}
+              </div>
+              <p className="hint">
+                Total frame height is base depth plus rise. Set corners and
+                bevels to zero for a flat, square profile.
+              </p>
+            </details>
+          </>
+        )}
+        {frameInvalid && <div className="settings-feedback" role="status"><p>{s.frame_width < frameMinimum ? "A separate frame with joining keys needs a border at least 6 mm wide." : s.frame_width > frameMaximum ? "Reduce the border width to leave room for your map." : "The corners and bevels need to fit inside the frame profile."}</p><button type="button" onClick={() => change({
+          frame_width: Math.max(frameMinimum, Math.min(s.frame_width, frameMaximum)),
+          corner_radius: Math.min(s.corner_radius, s.frame_width, frameMaximum),
+          inner_bevel: Math.min(s.inner_bevel, frameTotalHeight - 0.1),
+          outer_bevel: Math.min(s.outer_bevel, frameTotalHeight - 0.1),
+        })}>Fit profile to border</button></div>}
+      </FeatureGroup>
+  </>);
+  if (section === "format" || section === "make")
     return (
       <>
-        <div className="control-block">
+        {section === "format" && <FormatEditor settings={s} onChange={onChange}/>}
+        {section === "format" && !collection(s) && <div className="control-block">
+          <p className="hint">Choose the finished size, including your frame. The map selection updates with the proportions.</p>
           <h3>Finished artwork size</h3>
           <div className="size-presets" role="group" aria-label="Artwork sizes">
             {[
-              [400, 300, "Small"],
-              [600, 400, "Classic"],
-              [600, 600, "Square"],
+              [200, 200, "Small"],
+              [400, 300, "Medium"],
+              [600, 400, "Large"],
             ].map(([width, height, label]) => (
               <button
                 key={label}
@@ -293,8 +383,10 @@ export default function SettingsPanel({
             }}><RotateCw size={14} />Rotate size</button>
           </div>
           <p className="hint">Outer dimensions, including the frame. {lockedRatio ? "Changing one dimension also changes the other." : "Set any size from 60 to 2,000 mm."}</p>
-        </div>
-        <Section heading="Your printer" icon={<Printer size={18} />} description={`${s.printer_width} × ${s.printer_height} mm plate · ${s.nozzle} mm nozzle`}>
+          <p className="hint">Map area: {mapSize} with your current frame.</p>
+        </div>}
+        {section === "make" && <>
+        <Section open heading="Your printer" icon={<Printer size={18} />} description={`${s.printer_width} × ${s.printer_height} mm plate · ${s.nozzle} mm nozzle`}>
           <div className="printer-summary">
             <Printer size={23} />
             <span>
@@ -333,8 +425,8 @@ export default function SettingsPanel({
             <p className="hint">Usable plate: {usableWidth} × {usableDepth} mm after margins. Build height is checked against your generated parts.</p>
           </details>
         </Section>
-        <Section
-          heading="Tile layout"
+        {(s.map_format==="artwork"||s.frame_mode!=="none")&&<Section
+          heading={s.map_format==="artwork"?"Tile layout":"Holder plate layout"}
           icon={<Grid2X2 size={18} />}
           description={`${grid.columns * grid.rows} ${grid.columns * grid.rows === 1 ? "tile" : "tiles"} · ${s.layout === "auto" ? "Automatic" : "Custom"} · ${fits ? "Fits your printer" : "Needs attention"}`}
           open={!fits}
@@ -431,8 +523,8 @@ export default function SettingsPanel({
               </details>
             </>
           )}
-        </Section>
-        <Section heading="Joining & print details" icon={<Puzzle size={18} />} description={`${s.joints ? "Joining keys" : "No keys"} · ${s.labels ? "Back labels" : "No back labels"}`}>
+        </Section>}
+        {s.map_format==="artwork"&&<Section heading="Joining & print details" icon={<Puzzle size={18} />} description={`${s.joints ? "Joining keys" : "No keys"} · ${s.labels ? "Back labels" : "No back labels"}`}>
           {toggle("joints", "Hidden joining keys")}
           {toggle("labels", "Labels on the back")}
           {s.joints &&
@@ -443,11 +535,11 @@ export default function SettingsPanel({
             pieces first. Zero seam allowance keeps the full map.
           </p>
           {s.nozzle > 0.4 && s.labels && <p className="settings-feedback">A {s.nozzle} mm nozzle may lose fine lettering. Check the back labels in your slicer or turn them off.</p>}
-        </Section>
+        </Section>}
+        </>}
       </>
     );
-  return (
-    <>
+  const stylePicker = <>
       <div className="control-block">
         <h3>Start with a style</h3>
         <div className="style-presets simple-style-presets" role="group" aria-label="Model styles">
@@ -487,34 +579,30 @@ export default function SettingsPanel({
         </details>
         <p className="hint customise-hint">Open a group to customise it.</p>
       </div>
+  </>;
+  if (section === "style") return stylePicker;
+  return (<>
       <TerrainStyles settings={s} onChange={onChange} />
-      <Section heading="Map features" icon={<Route size={18} />} description={featureSummary} group="style-options">
-        <div className="layer-label">
-          <Route size={16} />
-          <h4>Roads</h4>
-        </div>
+      <div className="feature-list" aria-label="Map features">
+        <FeatureGroup heading="Roads" icon={<Route size={18}/>} checked={s.roads !== "none"} onChange={enabled => onChange({ roads: enabled ? lastRoad.current : "none" })} description={`${s.roads === "engraved" ? "Engraved" : "Raised"} · ${s.road_width} mm wide`}>
         {select("roads", "Road treatment", [
           ["raised", "Raised"],
           ["engraved", "Engraved"],
           ["none", "Hidden"],
         ])}
         {s.roads !== "none" && (
-          <details className="advanced">
-            <summary>Road width & height</summary>
+          <div className="feature-settings">
             <div className="two-col">
               {number("road_width", "Road width · mm", 0.6, 5, 0.1)}
               {number("road_height", s.roads === "engraved" ? "Engraving depth · mm" : "Road rise · mm", 0.2, 3, 0.1)}
             </div>
             {s.road_width < 2 * s.nozzle && <p className="settings-feedback">Roads are narrower than two nozzle widths. Try at least {(2 * s.nozzle).toFixed(1)} mm for a more reliable print.</p>}
-          </details>
+          </div>
         )}
-        <div className="layer-label">
-          <Waves size={16} />
-          {toggle("water", "Rivers & water")}
-        </div>
+        </FeatureGroup>
+        <FeatureGroup heading="Rivers & water" icon={<Waves size={18}/>} checked={s.water} onChange={water => onChange({ water })} description={`${s.water_style === "smooth" ? "Smooth" : "Contoured"} · ${s.water_depth} mm depth`}>
         {s.water && (
-          <details className="advanced">
-            <summary>Water detail</summary>
+          <div className="feature-settings">
             {select("water_style", "Water surface", [["carved", "Follow land contours"], ["smooth", "Smooth flowing water"]])}
             <div className="two-col">
               {number("water_width", "Water width · mm", 0.8, 8, 0.1)}
@@ -523,15 +611,12 @@ export default function SettingsPanel({
             {number("water_bank", "Soft bank width · mm", 0, 3, 0.1)}
             <p className="hint">Smooth water softens the channel bed while following the landscape. Bank width controls the transition into the surrounding land; zero gives a crisp edge. Water width is the minimum visible channel width.</p>
             {s.water_width < 2 * s.nozzle && <p className="settings-feedback">Try a water width of at least {(2 * s.nozzle).toFixed(1)} mm for your nozzle.</p>}
-          </details>
+          </div>
         )}
-        <div className="layer-label">
-          <Building2 size={16} />
-          {toggle("buildings", "Buildings")}
-        </div>
+        </FeatureGroup>
+        <FeatureGroup heading="Buildings" icon={<Building2 size={18}/>} checked={s.buildings} onChange={buildings => onChange({ buildings })} description={`${s.building_style === "realistic" ? "Mapped roofs" : s.building_style === "uniform" ? "Uniform blocks" : "Stepped roofs"} · ${s.building_exaggeration}× height`}>
         {s.buildings && (
-          <details className="advanced">
-            <summary>Building detail</summary>
+          <div className="feature-settings">
             {select("building_source", "Building coverage", [
               ["combined", "Enhanced coverage (recommended)"],
               ["osm", "OpenStreetMap only"],
@@ -579,59 +664,17 @@ export default function SettingsPanel({
               Small buildings may be enlarged for printing. Source coverage
               varies by place.
             </p>
-          </details>
+          </div>
         )}
-        <div className="layer-label">
-          <Landmark size={16} />
-          {toggle("landmarks", "Historic sites & landmarks")}
-        </div>
+        </FeatureGroup>
+        <FeatureGroup heading="Historic sites & landmarks" icon={<Landmark size={18}/>} checked={s.landmarks} onChange={landmarks => onChange({ landmarks })} description="Mapped historic places">
         {s.landmarks && <p className="hint">Adds mapped historic sites and landmarks. Their relief follows your building height and style settings.</p>}
+        </FeatureGroup>
         <LandscapeDetails settings={s} onChange={onChange} />
-      </Section>
+      </div>
       <PrintColours settings={s} onChange={onChange} />
-      <Section heading="Frame & caption" icon={<Frame size={18} />} description={s.frame_mode === "none" ? "No frame" : `${s.frame_mode === "separate" ? "Separate" : "Built-in"} frame${s.front_caption ? " · Caption on" : ""}`} group="style-options">
-        {select("frame_mode", "Frame", [
-          ["integrated", "Built into the map tiles"],
-          ["separate", "Print as separate pieces"],
-          ["none", "No frame"],
-        ])}
-        {s.frame_mode !== "none" && (
-          <>
-            <div className="frame-presets" role="group" aria-label="Frame profiles">
-              {frameProfiles.map(({ name, values }) => <button type="button" key={name}
-                disabled={Number(values.frame_width) > frameMaximum}
-                title={Number(values.frame_width) > frameMaximum ? "Choose a larger artwork to use this frame profile." : `${values.frame_width} mm border · ${Number(values.frame_depth) + Number(values.frame_height)} mm total height`}
-                aria-pressed={Object.entries(values).every(([key, value]) => s[key as keyof Settings] === value)}
-                onClick={() => change(values)}>{name}</button>)}
-            </div>
-            <p className="hint">{s.frame_mode === "separate" ? "Separate frames have a 2 mm retaining lip underneath. Its 45° seat matches the insert’s underside chamfer, keeping the printed edge supported. Leave the final frame section loose to slide the insert in, or lower it into a one-piece frame." : "The border forms part of the outer map tiles."} Total frame height: {frameTotalHeight.toFixed(1)} mm.</p>
-            {s.frame_mode === "separate" && <div className="frame-fit-summary"><Frame size={18} aria-hidden="true" /><span><strong>Supported slide-in insert</strong><small>2 mm lip · 45° seat · {s.tolerance.toFixed(2)} mm side clearance</small></span></div>}
-            {toggle("front_caption", "Name & coordinates on frame")}
-            {s.front_caption && <p className="caption-preview"><strong>{s.name || "Your artwork name"}</strong><small>{Math.abs((s.bounds.north + s.bounds.south) / 2).toFixed(4)}° {(s.bounds.north + s.bounds.south) / 2 >= 0 ? "N" : "S"} · {Math.abs(centreLongitude(s.bounds)).toFixed(4)}° {centreLongitude(s.bounds) >= 0 ? "E" : "W"}</small><span>Printed on the bottom border</span></p>}
-            <details className="advanced">
-              <summary>Frame dimensions & profile</summary>
-              <div className="two-col">
-                {number("frame_width", "Border width · mm", frameMinimum, frameMaximum, 0.5, s.frame_mode === "separate" && s.joints ? "At least 6 mm leaves room for the joining keys." : undefined)}
-                {number("frame_height", "Frame rise · mm", 1, 60, 0.5)}
-                {number("frame_depth", "Base depth · mm", 3, 20, 0.5)}
-                {number("corner_radius", "Corner radius · mm", 0, Math.floor(Math.min(15, s.frame_width) * 2) / 2, 0.5)}
-                {number("inner_bevel", "Inner bevel · mm", 0, Math.max(0, Math.floor(Math.min(4, s.frame_width - s.outer_bevel - 0.1, frameTotalHeight - 0.1) * 10) / 10), 0.1)}
-                {number("outer_bevel", "Outer bevel · mm", 0, Math.max(0, Math.floor(Math.min(4, s.frame_width - s.inner_bevel - 0.1, frameTotalHeight - 0.1) * 10) / 10), 0.1)}
-                {s.frame_mode === "separate" && number("tolerance", "Insert clearance · mm", 0.05, 0.5, 0.05, "Side clearance between the insert and frame wall. Print the fit-test pieces first.")}
-              </div>
-              <p className="hint">
-                Total frame height is base depth plus rise. Set corners and
-                bevels to zero for a flat, square profile.
-              </p>
-            </details>
-          </>
-        )}
-        {frameInvalid && <div className="settings-feedback" role="status"><p>{s.frame_width < frameMinimum ? "A separate frame with joining keys needs a border at least 6 mm wide." : s.frame_width > frameMaximum ? "Reduce the border width to leave room for your map." : "The corners and bevels need to fit inside the frame profile."}</p><button type="button" onClick={() => change({
-          frame_width: Math.max(frameMinimum, Math.min(s.frame_width, frameMaximum)),
-          corner_radius: Math.min(s.corner_radius, s.frame_width, frameMaximum),
-          inner_bevel: Math.min(s.inner_bevel, frameTotalHeight - 0.1),
-          outer_bevel: Math.min(s.outer_bevel, frameTotalHeight - 0.1),
-        })}>Fit profile to border</button></div>}
+      <Section heading="Trails" icon={<Route size={18}/>} description={`${s.trails.length} routes · import, draw or choose mapped paths`} group="style-options">
+        <TrailEditor settings={s} onChange={onChange} drawing={placing?.startsWith('trail:')?placing.slice(6):null} onDraw={id=>onPlace(id?'trail:'+id:null)}/>
       </Section>
       <Section
         heading={`Special places${s.markers.length ? ` · ${s.markers.length}` : ""}`}

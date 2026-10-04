@@ -11,7 +11,7 @@ import {
   Box,
   Palette,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useImperativeHandle, type Ref } from "react";
 import { api, type Model, type Part } from "./types";
 import "./preview.css";
 export default function PrintPackage({
@@ -20,17 +20,20 @@ export default function PrintPackage({
   selected,
   onSelect,
   stale,
+  ref,
 }: {
   jobId: string;
   model: Model;
   selected: string | null;
   onSelect: (id: string | null) => void;
   stale: boolean;
+  ref?: Ref<{ open: () => void }>;
 }) {
   const [bambuBusy, setBambuBusy] = useState(false);
   const [bambuMessage, setBambuMessage] = useState("");
   const [bambuFiles, setBambuFiles] = useState<string[]>(model.bambu?.files || []);
   async function openBambu(launch = true) {
+    if (bambuBusy || stale) return;
     setBambuBusy(true); setBambuMessage("");
     try {
       const result = await api<{ files: string[]; plate_count: number }>(`/projects/${encodeURIComponent(jobId)}/bambu?launch=${launch}`, {});
@@ -43,6 +46,7 @@ export default function PrintPackage({
       }
     } finally { setBambuBusy(false); }
   }
+  useImperativeHandle(ref, () => ({ open: () => { void openBambu(); } }));
   useEffect(() => { setBambuFiles(model.bambu?.files || []); setBambuMessage(""); }, [jobId, model.bambu]);
   const chosen = model.parts.find((p) => p.id === selected);
   const frameFit = model.model.frame_fit;
@@ -81,7 +85,7 @@ export default function PrintPackage({
           <h3>Everything you need to make it.</h3>
         </div>
         <div className="package-actions">
-        <button type="button" className="primary" disabled={bambuBusy} onClick={() => openBambu()}><Printer size={16} />{bambuBusy ? "Preparing plates…" : "Open in Bambu Studio"}</button>
+        <button type="button" className="primary" disabled={bambuBusy || stale} onClick={() => openBambu()}><Printer size={16} />{bambuBusy ? "Preparing plates…" : "Open in Bambu Studio"}</button>
         <a className="text-link package-download" download href={fileUrl("project.zip")}>
           <Download size={16} />
           Download ZIP
@@ -90,7 +94,7 @@ export default function PrintPackage({
       </div>
       <p className="package-help">Open all pieces on prepared plates, with colours and required quantities included. Choose your printer and filament profiles in Bambu Studio, check purge tower space, then slice all plates.{stale && " Rebuild to include your latest changes."}</p>
       {bambuMessage && <p className="package-help" role="status">{bambuMessage}</p>}
-      <div className="bambu-downloads">{bambuFiles.map((file, index) => <a key={file} download href={fileUrl(file)}><Download size={14} />Download plate project{bambuFiles.length > 1 ? ` ${index + 1} of ${bambuFiles.length}` : ""}</a>)}{!bambuFiles.length && <button type="button" disabled={bambuBusy} onClick={() => openBambu(false)}>Prepare downloadable plate project</button>}</div>
+      <div className="bambu-downloads">{bambuFiles.map((file, index) => <a key={file} download href={fileUrl(file)}><Download size={14} />Download plate project{bambuFiles.length > 1 ? ` ${index + 1} of ${bambuFiles.length}` : ""}</a>)}{!bambuFiles.length && <button type="button" disabled={bambuBusy || stale} onClick={() => openBambu(false)}>Prepare downloadable plate project</button>}</div>
       <div className="package-overview">
         <span><Box size={15} /><strong>{physicalPieces}</strong> physical {physicalPieces === 1 ? "piece" : "pieces"} · {model.parts.length} {multicolour ? "solid " : ""}STL {model.parts.length === 1 ? "file" : "files"}</span>
         <span className={checked === model.parts.length ? "valid" : "invalid"}>{checked === model.parts.length ? <Check size={15} /> : <TriangleAlert size={15} />}{checked}/{model.parts.length} meshes watertight</span>
@@ -277,6 +281,10 @@ export default function PrintPackage({
             hanging hardware to that panel.
           </li>
         </ul>
+        {(model.model.land_height_mm || model.model.frame_height_mm) && <p>
+          {model.model.land_height_mm && <>Land height: {model.model.land_height_mm.map(n => n.toFixed(1)).join("–")} mm</>}
+          {model.model.frame_height_mm && <> · Frame top: {model.model.frame_height_mm.map(n => n.toFixed(1)).join("–")} mm</>}
+        </p>}
         <p>
           Elevation {model.model.elevation_m.map((n) => n.toFixed(1)).join("–")}{" "}
           m · {model.model.features.buildings} buildings ·{" "}
@@ -285,7 +293,10 @@ export default function PrintPackage({
           {model.model.features.forest_areas !== undefined && <> · {model.model.features.forest_areas} woodland areas</>}
           {model.model.features.field_areas !== undefined && <> · {model.model.features.field_areas} fields</>}
           {model.model.features.grass_areas !== undefined && <> · {model.model.features.grass_areas} grassland areas</>}
-          {!!model.model.features.trees && <> · {model.model.features.trees} illustrative trees</>}
+          {!!model.model.features.trees && <> · {model.model.features.trees} woodland texture trees</>}
+          {!!model.model.features.mapped_trees && <> · {model.model.features.mapped_trees} mapped trees</>}
+          {!!model.model.features.tree_rows && <> · {model.model.features.tree_rows} tree rows</>}
+          {!!model.model.features.tree_canopies && <> · {model.model.features.tree_canopies} canopy patches</>}
         </p>
         <p>
           <a
@@ -308,6 +319,9 @@ export default function PrintPackage({
             target="_blank"
             rel="noreferrer"
           >Overture Maps &amp; building data contributors</a></>}
+          {model.sources.vectors.tree_canopy?.status === "loaded" && <>{" · "}<a
+            href={model.sources.vectors.tree_canopy.url} target="_blank" rel="noreferrer"
+          >Forest Research tree canopy · OGL</a></>}
         </p>
       </details>
     </section>

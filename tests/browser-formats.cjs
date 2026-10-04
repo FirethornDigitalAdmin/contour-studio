@@ -1,0 +1,31 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+const url=process.env.APP_URL||'http://127.0.0.1:5178';
+(async()=>{const b=await chromium.launch({headless:true,channel:'chrome'});try{
+const p=await b.newPage({baseURL:url,viewport:{width:1440,height:1000}});p.setDefaultTimeout(12000);const errors=[];p.on('pageerror',e=>errors.push(e.message));await p.route('**/api/active-job',r=>r.fulfill({json:null}));await p.goto(url);
+const nav=name=>p.locator('.stepper').getByRole('button',{name:new RegExp(name)});const side=p.getByRole('complementary');
+await side.getByRole('button',{name:/^Mini tiles/}).click();await p.getByRole('group',{name:'Collection arrangement'}).waitFor();
+await nav('Location').click();await p.getByRole('button',{name:'Edinburgh',exact:true}).click();
+await side.locator('.tile-location-list button').nth(1).click();await p.getByRole('button',{name:'Chamonix',exact:true}).click();
+await side.locator('.tile-location-list button').nth(0).click();assert.equal(await p.locator('.current-place strong').innerText(),'Edinburgh');
+await nav('Details').click();await side.getByText('Trails',{exact:true}).click();
+await side.locator('.trail-editor input[type=file]').setInputFiles({name:'walk.geojson',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({type:'LineString',coordinates:[[-3.19,55.948],[-3.185,55.957]]}))});
+await side.getByLabel('Trail name',{exact:true}).waitFor();await side.getByLabel('Trail name',{exact:true}).fill('Our walk');
+assert.equal(await p.locator('.location-symbols svg polyline').count(),1);
+await side.locator('.tile-location-list button').nth(1).click();assert.equal(await side.locator('.trail-card').count(),0);
+await side.locator('.tile-location-list button').nth(0).click();await side.getByText('Trails',{exact:true}).click();assert.equal(await side.getByLabel('Trail name',{exact:true}).inputValue(),'Our walk');
+await nav('Frame').click();await side.getByRole('group',{name:'Tile mounting'}).waitFor();
+await side.getByRole('spinbutton',{name:'Magnet thickness · mm',exact:true}).fill('3');await p.waitForTimeout(450);
+let s=await p.evaluate(()=>JSON.parse(localStorage.getItem('contour-studio.draft.v1')).settings);assert(s.base>=4.4);assert.equal(s.map_tiles[0].trails[0].name,'Our walk');
+const validated=await p.request.post('/api/validate',{data:s});assert(validated.ok(),await validated.text());
+await nav('Format').click();await side.getByRole('button',{name:/^Hexagons/}).click();await p.waitForFunction(()=>document.querySelector('[aria-label="Map formats"] button[aria-pressed=true]')?.textContent.includes('Hexagons')); await p.getByRole('group',{name:'Collection arrangement'}).waitFor();assert.equal(await p.locator('.collection-layout polygon').count(),4);
+await p.screenshot({path:'data/formats-backup/hexagons-desktop.png'});
+await nav('Location').click();assert.equal(await p.locator('.current-place strong').innerText(),'Edinburgh');
+await nav('Format').click();await side.getByRole('button',{name:/^Map jigsaw/}).click();await side.getByLabel('Width · mm',{exact:true}).fill('180');await side.getByLabel('Height · mm',{exact:true}).fill('120');
+assert.equal(await side.getByLabel('Puzzle relief · mm',{exact:true}).inputValue(),'0.6');
+await nav('Frame').click();await side.getByLabel('Puzzle seam clearance · mm',{exact:true}).waitFor();
+await nav('Make').click();await p.waitForTimeout(450);s=await p.evaluate(()=>JSON.parse(localStorage.getItem('contour-studio.draft.v1')).settings);
+const puzzle=await p.request.post('/api/validate',{data:s});assert(puzzle.ok(),await puzzle.text());
+await nav('Format').click();for(const width of [390,320]){await p.setViewportSize({width,height:844});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+await p.screenshot({path:'data/formats-backup/formats-mobile.png'});assert.deepEqual(errors,[]);console.log('PASS: mini maps keep separate places/trails, route import/overlay, magnet floor, hexagons, puzzle settings, API validation and responsive layout.');
+}finally{await b.close();}})().catch(e=>{console.error(e);process.exit(1)});

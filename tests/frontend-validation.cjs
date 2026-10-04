@@ -15,9 +15,11 @@ function load(name) {
 }
 const { markerFitsMap, restoreDraft, sameDesign, validSettingValue, validateDesign } = load("validation");
 const defaults = {
+  map_format:"artwork",tile_size:80,tile_gap:6,collection_columns:2,collection_rows:2,map_tiles:[],active_tile:0,mount_mode:"seat",magnet_diameter:6,magnet_depth:2,magnet_clearance:.2,puzzle_columns:3,puzzle_rows:2,puzzle_clearance:.25,puzzle_relief:.6,trails:[],
+  railways: false, railway_style: "tracks", railway_width: 2.4, railway_height: 0.4, road_hierarchy: false, urban_spaces: false, supported_crossings: false, bridge_openings: true, preserve_building_gaps: false, building_type_heights: false,
   name: "reference landscape", bounds: { west: -1.352, south: 53.498586, east: -1.278, north: 53.527414 },
   width: 600, height: 400, printer_width: 220, printer_height: 220, printer_z: 250, margin: 5, layout: "auto", columns: 3, rows: 2,
-  base: 4, exaggeration: 3, smoothing: 0.8, terrain_style: "smooth", contour_height: 1.2, facet_size: 12, resolution: 640,
+  land_variation: 1, frame_contour: "flat", frame_clearance: 1, base: 4, exaggeration: 3, smoothing: 0.8, terrain_style: "smooth", contour_height: 1.2, facet_size: 12, resolution: 640,
   seam: 0, joints: true, tolerance: 0.2, labels: true, frame_mode: "integrated", frame_width: 10, frame_depth: 5, frame_height: 12,
   corner_radius: 2, inner_bevel: 1, outer_bevel: 0.8, roads: "raised", road_width: 1.2, road_height: 0.6,
   water: true, water_width: 1.8, water_depth: 0.8, water_style: "carved", water_bank: 0,
@@ -100,3 +102,16 @@ for(const bounds of [defaults.bounds,{west:179.98,east:-179.98,south:-17.01,nort
 }
 assert.equal(restoreDraft({...traced,reference_image:{...reference,data:'https://example.com/image.jpg'}},tracedDefaults),null);
 console.log('PASS: authored outlines, portable reference, print freshness and normal/date-line/polar tracing projections.');
+
+for (const change of [{land_variation: -0.1}, {land_variation: 1.1}, {frame_contour: "bad"}, {frame_clearance: 0}]) assert(validateDesign({...defaults,...change}).length);
+const oldRelief={...defaults};for(const key of ['land_variation','frame_contour','frame_clearance'])delete oldRelief[key];
+assert.equal(restoreDraft(oldRelief,defaults).land_variation,1);
+assert.equal(restoreDraft(oldRelief,defaults).frame_contour,'flat');
+for(const change of [{land_variation: .5},{frame_contour:'follow'},{frame_clearance:2}])assert(!sameDesign(defaults,{...defaults,...change}));
+console.log('PASS: height controls, old draft defaults and generated-model freshness.');
+
+const puzzleDefaults={...defaults,puzzle_style:'rounded',puzzle_seed:1};
+assert.equal(restoreDraft(defaults,puzzleDefaults).puzzle_style,'rounded','old designs preserve round connectors');
+for(const change of [{puzzle_style:'broken'},{puzzle_seed:0},{puzzle_seed:10000},{puzzle_seed:1.5}])assert(validateDesign({...puzzleDefaults,...change}).length);
+for(const change of [{puzzle_style:'classic'},{puzzle_seed:2}])assert(!sameDesign(puzzleDefaults,{...puzzleDefaults,...change}),'pattern changes require regeneration');
+console.log('PASS: puzzle pattern validation, legacy defaults and print freshness.');

@@ -23,7 +23,7 @@ const url = process.env.APP_URL || "http://127.0.0.1:8765";
     );
   try {
     await page.goto(url);
-    await btn("Make it yours").waitFor();
+    await btn("Choose location").click();
     await page
       .getByLabel("Search for a place", { exact: true })
       .fill("Keswick");
@@ -37,6 +37,7 @@ const url = process.env.APP_URL || "http://127.0.0.1:8765";
       await page.locator(".current-place strong").innerText(),
       /Keswick/i,
     );
+    await page.locator(".stepper").getByRole("button", { name: /Format/ }).click();
     await btn("Tile layout").click();
     await page.getByRole("group", { name: /artwork divided/ }).waitFor();
     await btn("Square 600 × 600").click();
@@ -44,6 +45,7 @@ const url = process.env.APP_URL || "http://127.0.0.1:8765";
       await page.getByLabel("Height · mm", { exact: true }).inputValue(),
       "600",
     );
+    await page.locator(".stepper").getByRole("button", { name: /Make/ }).click();
     await reveal(page, btn("Custom"));
     await btn("Custom").click();
     await page.getByLabel("Columns", { exact: true }).fill("1");
@@ -52,7 +54,7 @@ const url = process.env.APP_URL || "http://127.0.0.1:8765";
     await btn("Automatic").click();
     await reveal(page, btn("Custom"));
     await page.locator(".tile-summary:not(.invalid)").waitFor();
-    await btn("Make it yours").click();
+    await page.locator(".stepper").getByRole("button", { name: /Details/ }).click();
     await page.getByRole("button", { name: /^Bold city/ }).click();
     await page
       .locator(".style-presets button[aria-pressed=true]")
@@ -73,14 +75,15 @@ const url = process.env.APP_URL || "http://127.0.0.1:8765";
     await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.45);
     await page.locator(".placement-note").waitFor({ state: "hidden" });
     assert.equal(await page.locator(".location-symbol").textContent(), "★");
+    await btn("Choose frame").click();
     await btn("Review & make").click();
     await page.getByRole("heading", { name: "Make your artwork." }).waitFor();
-    await btn("Place & size").click();
+    await page.locator(".stepper").getByRole("button", { name: /Format/ }).click();
     assert.equal(
       await page.getByLabel("Height · mm", { exact: true }).inputValue(),
       "600",
     );
-    await btn("2 Style").click();
+    await page.locator(".stepper").getByRole("button", { name: /Details/ }).click();
     await reveal(page, page.locator(".marker-heading"));
     assert.match(await page.locator(".marker-heading").innerText(), /Home/);
     const saveButton = page.locator(".sidebar").getByRole("button", { name: "Save settings", exact: true, includeHidden: true });
@@ -134,9 +137,10 @@ const url = process.env.APP_URL || "http://127.0.0.1:8765";
         )
       ).ok(),
     );
-    await btn("Style").click();
+    await page.locator(".stepper").getByRole("button", { name: /Details/ }).click();
     await page.getByRole("button", { name: /^Minimal/ }).click();
     await page.locator(".stale-note").waitFor();
+    await btn("Choose frame").click();
     await btn("Review & make").click();
     await btn("Update model").waitFor();
     assert.equal(

@@ -240,10 +240,20 @@ def assembly_svg(s,meta,parts):
         else:
             steps.append('Match Frame_A1_* etc. to the same terrain position, then glue the separate frame pieces.')
     steps.append('Bond the finished assembly to a rigid backing panel; mount hanging hardware on the panel.')
+    if s.map_format != 'artwork':
+        steps=['Print the included fit-test pieces first. Check edge and magnet fit before printing the whole project.',
+               'Open the numbered Bambu print-plate projects for all pieces, or import individual STLs rear-down.',
+               'Assembly.3mf and preview.glb show assembled positions; each STL has its own bed origin.']
+        if s.map_format=='jigsaw':
+            steps+=['Arrange Puzzle_row_column pieces using the assembled preview. The pieces have a 3 mm flat base and shallow map relief. Seat them in the tray without forcing the tabs.', 'Keep puzzle pieces removable. Glue only the holder plates to a rigid backing board.']
+        else:
+            steps+=['Each Map_row_column tile has its own location. Mini tiles share a surround; hexagons have individual holders.', 'Glue holder plates to a rigid backing board; keep map inserts removable. Hexagon holders can be arranged freely.']
+            if s.mount_mode=='magnets':steps+=[f'Use {s.magnet_diameter:g} × {s.magnet_depth:g} mm disc magnets, two per tile and two per matching holder. Pockets have {s.magnet_clearance:g} mm diameter/depth allowance.', 'Mark polarity before gluing magnets into the blind pockets. Let adhesive cure before inserting tiles. Do not glue the tiles to the holders.']
+        steps+=['Hardware, magnets, adhesive and backing board are not supplied. Physical fit requires a test print.']
     instructions.extend(f'{i}. {step}' for i,step in enumerate(steps,1))
     if has_keys:
         instructions.append('Keys align the pieces. They are not a structural hanging system. Hardware is not included.')
-    if s.labels:
+    if s.labels and s.map_format=='artwork':
         instructions.append('Rear labels are embossed inside recesses; the surrounding base remains flat.')
     instructions.extend(['Assembly.3mf preserves assembled positions. It may be larger than a single build plate.',
                          '© OpenStreetMap contributors · ODbL. Elevation: Mapzen Terrain Tiles (credits in model-info.json).'])
@@ -256,7 +266,18 @@ def assembly_svg(s,meta,parts):
            '<style>text{font-family:Arial,sans-serif;fill:#16323a} .small{font-size:14px}</style>',
            '<rect width="100%" height="100%" fill="#fff"/>',f'<text x="60" y="50" font-size="{title_size:g}" font-weight="bold">{name}</text>',
            f'<text x="60" y="78" class="small">ASSEMBLY · FRONT VIEW · NORTH / TOP ↑ · {s.width:g} × {s.height:g} mm</text>']
-    for row in range(rows):
+    if s.map_format != 'artwork':
+        from .formats import cells,puzzle_shapes
+        if s.map_format=='jigsaw':
+            inset=s.frame_width if s.frame_mode!='none' else 0
+            outlines=[(r,c,affinity.translate(shape,inset,inset)) for r,c,shape in puzzle_shapes(s.width-2*inset,s.height-2*inset,s.puzzle_columns,s.puzzle_rows,s.puzzle_clearance,style=s.puzzle_style,seed=s.puzzle_seed)]
+        else:outlines=list(cells(s))
+        for row,col,shape in outlines:
+            points=' '.join(f'{60+x*scale:g},{105+(s.height-y)*scale:g}' for x,y in shape.exterior.coords)
+            ident=f'Puzzle_{row+1}_{col+1}' if s.map_format=='jigsaw' else f'Map_{row+1}_{col+1}'
+            cx,cy=shape.centroid.coords[0]
+            lines.extend([f'<polygon points="{points}" fill="#eef3f3" stroke="#698287"/>',f'<text x="{60+cx*scale:g}" y="{105+(s.height-cy)*scale:g}" font-size="14" text-anchor="middle">{ident}</text>'])
+    for row in range(rows if s.map_format=='artwork' else 0):
         for col in range(cols):
             x,y=60+col*700/cols,105+row*h/rows
             ident=f'{chr(65+row)}{col+1}'
@@ -322,7 +343,7 @@ def build_project(s, folder:Path, progress, data_override=None):
             raise ValueError(f'{part["id"]} failed the STL round-trip validation.')
         result={k:v for k,v in part.items() if k not in ('solid', 'material_regions')}
         result.update(file=file,dimensions_mm=local.extents.round(4).tolist(),triangles=len(local.faces),watertight=True,
-                      volume_mm3=round(float(mesh.volume),2),assembly_origin_mm=origin.round(6).tolist(),
+                      volume_mm3=round(float(mesh.volume),2),assembly_origin_mm=(origin+np.array(part.get('assembly_offset_mm',[0,0,0]))).round(6).tolist(),
                       components=1,flat_base=True,warnings=[])
         if part['kind']=='terrain': result['warnings']=['Check fine building details and short underside bridges in the slicer.']
         material_regions = None
@@ -360,6 +381,10 @@ def build_project(s, folder:Path, progress, data_override=None):
             multicolour_tiles.append({'part_id': part['id'], 'file': colour_file, 'materials': material_results})
             multicolour_files.append(colour_file)
         results.append(result)
+        offset=part.get('assembly_offset_mm')
+        if offset:
+            mesh.apply_translation(offset)
+            for region_mesh in region_meshes.values():region_mesh.apply_translation(offset)
         if part['kind'] not in ('key','coupon'):
             assembly.append((part['id'],mesh))
             def add_preview(m,name,color):
@@ -371,7 +396,7 @@ def build_project(s, folder:Path, progress, data_override=None):
                     colour = material_by_id[ident]['colour']
                     rgba = [int(colour[index:index+2], 16) for index in (1, 3, 5)] + [255]
                     add_preview(region_meshes[ident].copy(), f'MaterialVisual_{part["id"]}_{ident}', rgba)
-            elif part['kind']=='terrain' and s.frame_mode=='integrated':
+            elif part['kind']=='terrain' and s.frame_mode=='integrated' and s.map_format=='artwork':
                 inset=s.frame_width
                 mask=prism(box(inset,inset,s.width-inset,s.height-inset),s.printer_z+100)
                 add_preview(as_trimesh(part['solid']^mask),part['id'],[216,219,207,255])
@@ -434,6 +459,10 @@ def build_project(s, folder:Path, progress, data_override=None):
                         'https://github.com/microsoft/GlobalMLBuildingFootprints',
                         'Additional source credits and licenses: '+coverage['url'],
                         'Building outlines and heights may be imagery-derived estimates.'])
+    canopy=info['sources']['vectors'].get('tree_canopy')
+    if canopy and canopy.get('status')=='loaded':
+        credits.extend(['Tree canopy: '+canopy['provider'],canopy['attribution'],
+                        'License: '+canopy['license'],canopy['url'],canopy['limitation']])
     (folder/'data-sources.txt').write_text('\n'.join(credits)+'\n', encoding='utf-8')
     # Publish only after the entire archive is closed and validated. A client
     # must never see a partial project.zip after a disk or compression failure.

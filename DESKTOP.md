@@ -86,3 +86,7 @@ python scripts/check_desktop.py
 On Mac, run `python scripts/package_desktop.py` to create the DMG in `releases/`. On Windows, download the [Microsoft WebView2 bootstrapper](https://go.microsoft.com/fwlink/p/?LinkId=2124703) to `desktop/WebView2Bootstrapper.exe`, install [Inno Setup 6](https://jrsoftware.org/isinfo.php), and compile `desktop/windows.iss`; the setup EXE is written to `releases/`. Build each Mac architecture on matching hardware or its workflow runner.
 
 If the local app reports that its connection is in use, close the other copy or check whether another program is using port 8767. A failed engine startup now shows a recovery window with the diagnostic-log location. If the native browser runtime cannot open, a system dialog gives the next step; on Windows, retry setup with internet access to repair WebView2. See [START-HERE.md](START-HERE.md) for the local-browser fallback and generation help.
+
+## rc.6 release preparation
+
+This release includes the project-based Place, Design and Print workflow, single maps, modular walls and jigsaw puzzles, the unified Projects library, and direct access to the current project and Help. Local packaging on 4 October was blocked by the host Xcode licence; native installers are built and checked on GitHub runners. Saved user projects remain outside the installation.

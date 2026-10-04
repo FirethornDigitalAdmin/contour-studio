@@ -1,16 +1,19 @@
+import { collection, collectionDimensions, activeMapSettings } from "./formats";
 import { validCustomBuildings, validReferenceImage } from "./tracing";
 import { layout, type LocationMarker, type Settings } from "./types";
 
 import { validBounds, insideBounds, longitudeOffset, longitudeSpan, polarArea } from "./world";
 
 const limits: Partial<Record<keyof Settings, [number, number, boolean?]>> = {
+  puzzle_seed:[1,9999,true], tile_size: [60,160], tile_gap: [4,20], collection_columns:[1,6,true], collection_rows:[1,6,true], active_tile:[0,35,true], magnet_diameter:[3,12], magnet_depth:[1,4], magnet_clearance:[.05,.5], puzzle_columns:[2,10,true], puzzle_rows:[1,10,true], puzzle_clearance:[.1,.6], puzzle_relief:[.2,1.2],
   width: [60, 2000], height: [60, 2000], printer_width: [80, 1000],
   printer_height: [80, 1000], printer_z: [20, 1000], margin: [0, 30],
   columns: [1, 20, true], rows: [1, 20, true], base: [3, 20],
-  exaggeration: [0.1, 30], smoothing: [0, 5], contour_height: [0.2, 10],
+  land_variation: [0, 1], frame_clearance: [0.2, 5], exaggeration: [0.1, 30], smoothing: [0, 5], contour_height: [0.2, 10],
   facet_size: [3, 40], resolution: [64, 1024, true], seam: [0, 0.4],
   tolerance: [0.05, 0.5], frame_width: [4, 40], frame_depth: [3, 20],
   frame_height: [1, 60], corner_radius: [0, 15], inner_bevel: [0, 4],
+  railway_width: [0.8, 8], railway_height: [0.2, 1.5],
   outer_bevel: [0, 4], road_width: [0.6, 5], road_height: [0.2, 3],
   water_width: [0.8, 8], water_depth: [0.2, 2], building_height: [2, 80],
   water_bank: [0, 3], tree_size: [1.2, 6], tree_height: [0.4, 5], tree_spacing: [1.5, 12],
@@ -19,13 +22,15 @@ const limits: Partial<Record<keyof Settings, [number, number, boolean?]>> = {
   building_min_height: [0.2, 10], nozzle: [0.2, 1],
   marker_lon: [-180, 180], marker_lat: [-90, 90],
 };
-const choices: Partial<Record<keyof Settings, string[]>> = { layout: ["auto", "manual"], terrain_style: ["smooth", "terraced", "sculpted", "faceted"], frame_mode: ["integrated", "separate", "none"], roads: ["raised", "engraved", "none"], building_source: ["combined", "osm"], building_style: ["realistic", "uniform", "stepped"], small_buildings: ["enhance", "keep", "omit"], water_style: ["carved", "smooth"], forest_style: ["canopy", "trees"], tree_type: ["broadleaf", "conifer", "mixed"], forest_grouping: ["groves", "even"], field_style: ["flat", "furrows", "rounded"] };
+const choices: Partial<Record<keyof Settings, string[]>> = { puzzle_style:["classic","rounded"], map_format:["artwork","mini_tiles","hexagons","jigsaw"], mount_mode:["seat","magnets"], frame_contour: ["flat", "minimum", "follow"], railway_style: ["bed", "tracks"], layout: ["auto", "manual"], terrain_style: ["smooth", "terraced", "sculpted", "faceted"], frame_mode: ["integrated", "separate", "none"], roads: ["raised", "engraved", "none"], building_source: ["combined", "osm"], building_style: ["realistic", "uniform", "stepped"], small_buildings: ["enhance", "keep", "omit"], water_style: ["carved", "smooth"], forest_style: ["canopy", "trees"], tree_type: ["broadleaf", "conifer", "mixed"], forest_grouping: ["groves", "even"], field_style: ["flat", "furrows", "rounded"] };
 const colourKeys: (keyof Settings)[] = ["colour_ground", "colour_water", "colour_forest", "colour_fields", "colour_roads", "colour_buildings", "colour_frame", "colour_markers"];
 const validColour = (value: unknown) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 const heartY = Array.from({ length: 96 }, (_, i) => { const a = i * Math.PI * 2 / 96; return 13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a); });
 const heartHalfHeight = (Math.max(...heartY) - Math.min(...heartY)) / 64;
 
 export function markerFitsMap(marker: LocationMarker, settings: Settings): boolean {
+  const hex=settings.map_format==="hexagons";
+  settings=activeMapSettings(settings);
   const inset = settings.frame_mode === "none" ? 0 : settings.frame_width;
   const width = settings.width - 2 * inset, height = settings.height - 2 * inset;
   const mercator = (lat: number) => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
@@ -34,6 +39,7 @@ export function markerFitsMap(marker: LocationMarker, settings: Settings): boole
   const y = (latitudeY(marker.lat) - latitudeY(settings.bounds.south)) / (latitudeY(settings.bounds.north) - latitudeY(settings.bounds.south)) * height;
   const halfWidth = marker.size * (marker.symbol === "pin" ? 1 / 3 : 0.5);
   const halfHeight = marker.size * (marker.symbol === "heart" ? heartHalfHeight : marker.symbol === "star" ? 0.47552825814757677 : 0.5);
+  if(hex&&[[x-halfWidth,y-halfHeight],[x+halfWidth,y-halfHeight],[x-halfWidth,y+halfHeight],[x+halfWidth,y+halfHeight]].some(([px,py])=>Math.abs(px-width/2)+Math.abs(py-height/2)/Math.sqrt(3)>width/2-.2))return false;
   return x - halfWidth >= 0.1 && x + halfWidth <= width - 0.1 && y - halfHeight >= 0.1 && y + halfHeight <= height - 0.1;
 }
 
@@ -52,28 +58,55 @@ export function restoreDraft(value: unknown, defaults: Settings): Settings | nul
   const draft = value as Record<string, unknown>;
   const next = { ...defaults, ...draft } as Settings;
   for (const [key, fallback] of Object.entries(defaults)) {
-    if (key === "bounds" || key === "markers" || key === "custom_buildings" || key === "reference_image") continue;
+    if (key === "bounds" || key === "markers" || key === "custom_buildings" || key === "reference_image" || key === "map_tiles" || key === "trails") continue;
     if (typeof next[key as keyof Settings] !== typeof fallback) return null;
     if (typeof fallback === "number" && !Number.isFinite(next[key as keyof Settings])) return null;
   }
+  if (!validTrails(next.trails ?? []) || !validMapTiles(next.map_tiles ?? [])) return null;
   if (!validCustomBuildings(next.custom_buildings ?? []) || !validReferenceImage(next.reference_image)) return null;
   if (!next.bounds || typeof next.bounds !== "object" || !["west", "south", "east", "north"].every((k) => typeof next.bounds[k as keyof typeof next.bounds] === "number" && Number.isFinite(next.bounds[k as keyof typeof next.bounds]))) return null;
   if (!Array.isArray(next.markers) || next.markers.length > 20 || next.markers.some((m) => !m || typeof m.id !== "string" || typeof m.label !== "string" || !["heart", "star", "pin"].includes(m.symbol) || ![m.lon, m.lat, m.size, m.rise].every((v) => typeof v === "number" && Number.isFinite(v)))) return null;
-  if (Object.entries(choices).some(([key, values]) => !values.includes(String(next[key as keyof Settings])))) return null;
+  if (Object.entries(choices).some(([key, values]) => !(key === "puzzle_style" && next.puzzle_style === undefined) && !values.includes(String(next[key as keyof Settings])))) return null;
   if (colourKeys.some((key) => !validColour(next[key]))) return null;
   return Object.fromEntries(Object.keys(defaults).map((key) => [key, next[key as keyof Settings]])) as Settings;
 }
 
 export function validateDesign(s: Settings): string[] {
   const issues: string[] = [];
+  if (s.project_type !== undefined && !["single", "modular", "jigsaw"].includes(s.project_type)) issues.push("Choose a valid project type.");
+  if(!validTrails(s.trails))issues.push("Check trail names, coordinates and printable widths in Trails.");
+  if(!validMapTiles(s.map_tiles))issues.push("Check each collection tile location.");
+  if(collection(s)) {
+    const dimensions=collectionDimensions(s);
+    if(Math.abs(dimensions.width-s.width)>.01||Math.abs(dimensions.height-s.height)>.01)issues.push("Check collection dimensions in Format.");
+    for (const [i,tile] of s.map_tiles.entries()) {
+      if(validBounds(tile.bounds)&&validTrails(tile.trails)) {
+        const tileSettings={...activeMapSettings(s),map_format:"artwork" as const,map_tiles:[],trails:tile.trails,markers:tile.markers,name:tile.name,bounds:tile.bounds};
+        const tileIssues=validateDesign(tileSettings);
+        if(tileIssues.length)issues.push(`Tile ${i+1}: ${tileIssues[0]}`);
+      }
+    }
+    if(s.active_tile>=s.map_tiles.length)issues.push("Choose a valid active collection tile in Location.");
+    if(s.map_tiles.length!==s.collection_columns*s.collection_rows)issues.push("Assign a location to every collection tile.");
+    if(s.mount_mode==='magnets'&&s.base<s.magnet_depth+s.magnet_clearance+1.2)issues.push("Increase base thickness to leave 1.2 mm above the magnet pockets.");
+    if(s.map_format==='hexagons'&&s.tile_size+s.tile_gap>Math.min(s.printer_width,s.printer_height)-2*s.margin)issues.push("Each hexagon holder must fit your usable build plate.");
+  }
+  if(s.map_format==='jigsaw') {
+    const border=s.frame_mode==='none'?0:2*s.frame_width;
+    const tw=(s.width-border)/s.puzzle_columns, th=(s.height-border)/s.puzzle_rows, radius=Math.min(tw,th)*.18;
+    if(Math.min(tw,th)<30)issues.push("Jigsaw pieces need at least 30 mm before tabs.");
+    if(tw+2.7*radius>s.printer_width-2*s.margin||th+2.7*radius>s.printer_height-2*s.margin)issues.push("Jigsaw pieces including tabs must fit your printer. Increase piece count in Format.");
+  }
   if (!validCustomBuildings(s.custom_buildings ?? [])) issues.push("Check added building outlines, names and heights in Add missing details.");
   if (!validReferenceImage(s.reference_image)) issues.push("Choose a valid reference image in Add missing details.");
   if (colourKeys.some((key) => !validColour(s[key]))) issues.push("Choose a valid six-digit colour for each print material.");
   if (!s.name.trim() || s.name.length > 64) issues.push("Give your artwork a name of 1–64 characters.");
   for (const [key, values] of Object.entries(choices)) {
+    if (key === "puzzle_style" && s.puzzle_style === undefined) continue;
     if (!values.includes(String(s[key as keyof Settings]))) issues.push(`Choose a valid ${key.replaceAll("_", " ")} option.`);
   }
   for (const [key, range] of Object.entries(limits)) {
+    if (key === "puzzle_seed" && s.puzzle_seed === undefined) continue;
     const [min, max, integer] = range;
     const value = s[key as keyof Settings];
     if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value)))
@@ -96,7 +129,7 @@ export function validateDesign(s: Settings): string[] {
     if (s.corner_radius > s.frame_width) issues.push("The corner radius must not exceed the frame width.");
     if (Math.max(s.inner_bevel, s.outer_bevel) >= s.frame_depth + s.frame_height) issues.push("Bevels must be smaller than the total frame height.");
     if (s.frame_mode === "separate" && s.joints && s.frame_width < 6) issues.push("A separate frame with joining keys needs a border of at least 6 mm.");
-    if (s.frame_depth + s.frame_height + (s.front_caption ? 0.55 : 0) > s.printer_z) issues.push("The frame and caption are taller than your printer's build height.");
+    if (s.frame_contour !== "follow" && s.frame_depth + s.frame_height + (s.front_caption ? 0.55 : 0) > s.printer_z) issues.push("The frame and caption are taller than your printer's build height.");
   }
   if (s.markers.length > 20 || new Set(s.markers.map((m) => m.id)).size !== s.markers.length)
     issues.push("Use at most 20 special places with unique IDs.");
@@ -118,6 +151,13 @@ export function sameDesign(a: Settings, b: Settings): boolean {
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, canonical(child)]));
     return value;
   };
-  const printable = (s: Settings) => { const { reference_image: _image, ...rest } = s; return { ...rest, custom_buildings: s.custom_buildings ?? [] }; };
+  const printable = (s: Settings) => { const { reference_image: _image, project_type: _type, ...rest } = s; return { ...rest, custom_buildings: s.custom_buildings ?? [], map_tiles:s.map_tiles.map(({reference_image:_tileImage,...tile})=>({...tile,custom_buildings:tile.custom_buildings??[]})) }; };
   return JSON.stringify(canonical(printable(a))) === JSON.stringify(canonical(printable(b)));
+}
+
+export function validTrails(value: unknown): boolean {
+  return Array.isArray(value)&&value.length<=20&&new Set(value.map(t=>t?.id)).size===value.length&&value.every(t=>t&&typeof t.id==='string'&&t.id.length>0&&t.id.length<=64&&typeof t.name==='string'&&t.name.trim().length>0&&t.name.length<=64&&['raised','engraved'].includes(t.style)&&Number.isFinite(t.width)&&t.width>=.8&&t.width<=8&&Number.isFinite(t.height)&&t.height>=.2&&t.height<=2&&Array.isArray(t.points)&&t.points.length>=2&&t.points.length<=10000&&t.points.every((p: unknown)=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)&&Math.abs(p[0])<=180&&Math.abs(p[1])<=90)&&new Set(t.points.map((p:number[])=>p.join(','))).size>=2);
+}
+export function validMapTiles(value: unknown): boolean {
+  return Array.isArray(value)&&value.length<=36&&new Set(value.map(t=>t?.id)).size===value.length&&value.every(t=>t&&typeof t.id==='string'&&t.id.length>0&&typeof t.name==='string'&&t.name.trim().length>0&&t.name.length<=64&&validBounds(t.bounds)&&validTrails(t.trails)&&validCustomBuildings(t.custom_buildings??[])&&validReferenceImage(t.reference_image)&&Array.isArray(t.markers)&&t.markers.length<=20);
 }

@@ -39,54 +39,46 @@ import { repository, releaseUrl } from "./distribution";
 import { api, hostedWorkspace, starterPlaces } from "./hosted";
 import { ApiError, layout, type Settings, type Job } from "./types";
 import { Field, NumberField, Section } from "./Controls";
+import { collection, activeMapSettings } from "./formats";
+import { TilePicker } from "./FormatEditor";
+import PuzzleLayout from "./PuzzleLayout";
+import CollectionLayout from "./CollectionLayout";
 import SettingsPanel from "./SettingsPanel";
 import LayoutView from "./LayoutView";
 import PrintPackage from "./PrintPackage";
 import WorkspaceBoundary from "./WorkspaceBoundary";
 import useDesignHistory from "./useDesignHistory";
+import ProjectStart, { ProjectChooser } from "./ProjectStart";
+import { configureProject, projectNames, projectType, readDesigns, saveDesign, type ProjectType, type WallContent, type SavedDesign } from "./projectWorkflow";
+import "./project-workspace.css";
 import { restoreDraft, sameDesign, validateDesign } from "./validation";
-import { validBounds, insideBounds, centreLongitude, placeBounds, artworkRatio, fitArtworkBounds } from "./world";
+import { selectionAreaKm2, MAX_BUILDING_AREA_KM2, validBounds, insideBounds, centreLongitude, placeBounds, artworkRatio, fitArtworkBounds } from "./world";
 const MapView = lazy(() => import("./MapView"));
 const TraceEditor = lazy(() => import("./TraceEditor"));
 const Preview = lazy(() => import("./Preview"));
 
 const steps = [
-  {
-    name: "Place & size",
-    title: "Choose your place.",
-    description: "Choose your place and finished artwork size together.",
-    next: "Make it yours",
-  },
-  {
-    name: "Style",
-    title: "Make it yours.",
-    description: "Pick a style. Make it yours.",
-    next: "Review & make",
-  },
-  {
-    name: "Make",
-    title: "Make your artwork.",
-    description: "Build your model, take a look, then download your files.",
-    next: "Generate model",
-  },
+  { name: "Place", title: "Choose your place.", description: "Choose your location, artwork size and tile layout together. Move and resize the selection on the map.", next: "Design your artwork" },
+  { name: "Design", title: "Make it yours.", description: "Start with a style. Switch features on or off, then open the details you want to change.", next: "Prepare to print" },
+  { name: "Print", title: "Prepare every piece.", description: "Choose your printer. We’ll organise your map, frame and joining pieces for printing.", next: "Prepare print plates" },
 ];
-type Project = {
-  id: string;
-  name: string;
-  created_at: string;
-  layout: { columns: number; rows: number };
-  width?: number;
-  height?: number;
-  terrain_style?: string;
-};
+const MAKE_STEP = 2;
+type Project = import("./ProjectStart").GeneratedProject;
 type SearchResult = { display_name: string; lon: string; lat: string };
 type View = "map" | "layout" | "3d" | "trace";
 
 export default function App() {
-  const { settings, setSettings, patch, undo, redo, canUndo, canRedo } = useDesignHistory();
+  const { settings, setSettings, resetSettings, patch, undo, redo, canUndo, canRedo } = useDesignHistory();
   const [job, setJob] = useState<Job | null>(null);
   const [step, setStep] = useState(0);
   const [view, setView] = useState<View>("map");
+  const [home, setHome] = useState(true);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [designs, setDesigns] = useState(readDesigns);
+  const designId = useRef<string>(crypto.randomUUID());
+  const [chooserMode, setChooserMode] = useState<"new" | "change">("new");
+  const [chooserSession, setChooserSession] = useState(0);
+  const chooserDialog = useRef<HTMLDialogElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -97,28 +89,27 @@ export default function App() {
   const [opening, setOpening] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [draftTrailPoints,setDraftTrailPoints]=useState<[number,number][]>([]);
   const [placingMarker, setPlacingMarker] = useState<string | null>(null);
   const [mapRatioLocked, setMapRatioLocked] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [draftStatus, setDraftStatus] = useState("Draft saved on this device");
-  const [projectQuery, setProjectQuery] = useState("");
-  const [projectSort, setProjectSort] = useState("newest");
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState("");
   const defaultsRef = useRef<Settings | null>(null);
   const searchVersion = useRef(0);
   const draftSnapshot = useRef<string | null>(null);
-  draftSnapshot.current = settings ? JSON.stringify({ version: 1, settings, jobId: job?.id, step, view, mapRatioLocked }) : null;
+  draftSnapshot.current = settings ? JSON.stringify({ version: 1, workflowVersion: 3, settings, id: designId.current, jobId: job?.id, step, view, mapRatioLocked }) : null;
   const [navigation, setNavigation] = useState("studio");
   const settingsDialog = useRef<HTMLDialogElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
-  const filesButton = useRef<HTMLButtonElement>(null);
+  const helpButton = useRef<HTMLButtonElement>(null);
   const helpDialog = useRef<HTMLDialogElement>(null);
   const creatorDialog = useRef<HTMLDialogElement>(null);
   const creatorCredit = useRef<HTMLButtonElement>(null);
-  const projectDialog = useRef<HTMLDialogElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
+  const printPackage = useRef<{ open: () => void }>(null);
   const stepHeading = useRef<HTMLHeadingElement>(null);
   const busy =
     starting || job?.status === "running" || job?.status === "queued";
@@ -136,13 +127,18 @@ export default function App() {
           try {
             const draft = JSON.parse(localStorage.getItem("contour-studio.draft.v1") || "null");
             if (draft?.version === 1 && draft.settings) {
+              designId.current = typeof draft.id === "string" ? draft.id : designId.current;
               const savedSettings = restoreDraft(draft.settings, defaults);
               if (!savedSettings) throw new Error("Invalid draft");
+              setHasDraft(true);
               restored = savedSettings;
               if (draft.jobId) savedJob = await api<Job>("/jobs/" + encodeURIComponent(draft.jobId)).catch(() => null);
               if (savedJob?.result) savedJob = { ...savedJob, result: { ...savedJob.result, settings: { ...defaults, ...savedJob.result.settings, building_source: savedJob.result.settings.building_source ?? "osm", markers: savedJob.result.settings.markers ?? [] } } };
               if (!alive) return;
-              setStep([0, 1, 2].includes(draft.step) ? draft.step : 0);
+              setStep(draft.workflowVersion === 3
+                ? (Number.isInteger(draft.step) && draft.step >= 0 && draft.step < steps.length ? draft.step : 0)
+                : draft.workflowVersion === 2 ? ({ 0: 0, 1: 0, 2: 1, 3: 1, 4: MAKE_STEP }[draft.step as number] ?? 0)
+                : ({ 0: 0, 1: 1, 2: MAKE_STEP }[draft.step as number] ?? 0));
               setView(["map", "layout", "3d", "trace"].includes(draft.view) ? draft.view : "map");
               setMapRatioLocked(draft.mapRatioLocked !== false);
               setDraftStatus("Your last design was restored");
@@ -152,8 +148,10 @@ export default function App() {
         if (!alive) return;
         setSettings({ ...restored, markers: restored.markers ?? [] });
         if (active) {
+          setHome(false);
+          setHasDraft(true);
           setJob(active);
-          setStep(2);
+          setStep(MAKE_STEP);
           setView("3d");
         } else if (savedJob?.result) setJob(savedJob);
       })
@@ -170,26 +168,27 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    if (!settings) return;
+    if (!settings || !hasDraft) return;
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem("contour-studio.draft.v1", JSON.stringify({ version: 1, settings, jobId: job?.id, step, view, mapRatioLocked }));
-        setDraftStatus("Draft saved on this device");
+        localStorage.setItem("contour-studio.draft.v1", JSON.stringify({ version: 1, workflowVersion: 3, settings, id: designId.current, jobId: job?.id, step, view, mapRatioLocked }));
+        setDesigns(saveDesign({ id: designId.current, updated: new Date().toISOString(), settings, jobId: job?.id, step, view, mapRatioLocked }));
+        setDraftStatus("All changes saved on this device");
       } catch { setDraftStatus("Draft saving unavailable · Save settings to keep a copy"); }
     }, 350);
     return () => clearTimeout(timer);
-  }, [settings, job?.id, step, view, mapRatioLocked]);
+  }, [settings, job?.id, step, view, mapRatioLocked, hasDraft]);
   useEffect(() => {
     const flush = () => {
-      if (!draftSnapshot.current) return;
-      try { localStorage.setItem("contour-studio.draft.v1", draftSnapshot.current); } catch { /* Keep exported settings available if browser storage is full. */ }
+      if (!hasDraft || !draftSnapshot.current) return;
+      try { localStorage.setItem("contour-studio.draft.v1", draftSnapshot.current); const snapshot = JSON.parse(draftSnapshot.current); saveDesign({ ...snapshot, updated: new Date().toISOString() }); } catch { /* Keep exported settings available if browser storage is full. */ }
     };
     window.addEventListener("pagehide", flush);
     window.addEventListener("beforeunload", flush);
     return () => { window.removeEventListener("pagehide", flush); window.removeEventListener("beforeunload", flush); };
-  }, []);
+  }, [hasDraft]);
   useEffect(() => {
-    if (placingMarker && !settings?.markers.some((marker) => marker.id === placingMarker)) setPlacingMarker(null);
+    if (placingMarker && !placingMarker.startsWith("trail:") && !settings?.markers.some((marker) => marker.id === placingMarker)) setPlacingMarker(null);
   }, [settings?.markers, placingMarker]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -213,7 +212,7 @@ export default function App() {
         setJob(next);
         if (next.status === "complete") {
           setView("3d");
-          setStep(2);
+          setStep(MAKE_STEP);
           api<Project[]>("/projects")
             .then((v) => {
               if (alive) setProjects(v);
@@ -263,14 +262,18 @@ export default function App() {
     if (hostedWorkspace || !settings) return;
     const onMenu = (event: Event) => {
       const command = (event as CustomEvent<string>).detail;
-      if (!["place", "design", "make", "projects", "save-design", "import-design", "help"].includes(command)) return;
-      if (busy && ["place", "design", "make", "projects", "import-design"].includes(command)) return;
+      if (!["new-project", "home", "format", "place", "design", "frame", "make", "projects", "save-design", "import-design", "help"].includes(command)) return;
+      if (busy && ["new-project", "home", "format", "place", "design", "frame", "make", "projects", "import-design"].includes(command)) return;
       document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(open => open.close());
       switch (command) {
+        case "new-project": showChooser("new"); break;
+        case "home": showProjects(); break;
+        case "format": revealSettingsGroup("Size & layout"); break;
+        case "frame": revealSettingsGroup("Frame & caption"); break;
         case "place": go(0); break;
         case "design": go(1); break;
-        case "make": go(2); break;
-        case "projects": projectDialog.current?.showModal(); void refreshProjects(); break;
+        case "make": go(MAKE_STEP); break;
+        case "projects": showProjects(); break;
         case "save-design": saveSettings(); break;
         case "import-design": importInput.current?.click(); break;
         case "help": helpDialog.current?.showModal(); break;
@@ -298,8 +301,9 @@ export default function App() {
   const s = settings;
   const validationIssues = validateDesign(s);
   const grid = layout(s);
-  const count = grid.columns * grid.rows;
-  const tileNoun = count === 1 ? "tile" : "tiles";
+  const count = collection(s) ? s.map_tiles.length : s.map_format==="jigsaw" ? s.puzzle_columns*s.puzzle_rows : grid.columns * grid.rows;
+  const tileNoun = s.map_format==="jigsaw" ? "pieces" : collection(s) ? "maps" : count === 1 ? "tile" : "tiles";
+  const displaySize = (v:number) => Number(v.toFixed(1));
   const frameWidth = s.frame_mode === "none" ? 0 : s.frame_width;
   const fits =
     Number.isFinite(count) &&
@@ -312,11 +316,12 @@ export default function App() {
     Math.min(s.width / grid.columns, s.height / grid.rows) >=
       Math.max(30, frameWidth ? frameWidth + 24 : 30);
   const boundsValid = validBounds(s.bounds);
+  const selectedArea = selectionAreaKm2(s.bounds);
   const outsideMarkers = s.markers.some(m => !insideBounds(m.lon,m.lat,s.bounds));
 
   const geometryStale = !!model && (
-    model.model.geometry_revision !== "flat-colour-depth-v5" ||
-    (model.settings.frame_mode === "separate" && model.model.frame_fit?.assembly !== "chamfered-insert")
+    model.model.geometry_revision !== "map-formats-v13" ||
+    (model.settings.map_format === "artwork" && model.settings.frame_mode === "separate" && model.model.frame_fit?.assembly !== "chamfered-insert")
   );
   const stale = !!model && (
     geometryStale ||
@@ -330,6 +335,7 @@ export default function App() {
   const technicalFailure = failedModel && /solid mesh|watertight|material.*STL|STL.*validation|disconnected geometry/i.test(job.message);
   const canGenerate = validationIssues.length === 0;
   const active = steps[step];
+  const mapSettings=activeMapSettings(s);
 
   function changeSettings(values: Partial<Settings>) {
     const next = { ...s, ...values };
@@ -342,9 +348,12 @@ export default function App() {
   function go(next: number) {
     if (busy) return;
     if (next !== 0) clearPlaceSearch();
+    setHome(false);
     setStep(next);
     setPlacingMarker(null);
-    setView(next === 0 ? "map" : next === 2 || model ? "3d" : "map");
+    if (next === 0) setView("map");
+    else if (next === MAKE_STEP) setView(model ? "3d" : "layout");
+    else if (view === "trace") setView(model ? "3d" : "map");
     requestAnimationFrame(() => {
       panel.current?.scrollTo({ top: 0 });
       stepHeading.current?.focus({ preventScroll: true });
@@ -358,18 +367,24 @@ export default function App() {
     setQuery("");
   }
   function reviewSettings(issue: string) {
-    const heading = /frame|bevel|corner|caption/i.test(issue) ? "Frame & caption"
+    const heading = /collection|jigsaw|puzzle|piece count/i.test(issue) ? "Size & layout" : /magnet|mount|frame|bevel|corner|caption/i.test(issue) ? "Frame & caption"
+      : /trail|route/.test(issue) ? "Trails"
       : /special place|location pin|marker/i.test(issue) ? "Special places"
       : /colour|material/i.test(issue) ? "Print colours"
       : /base|smoothing|exaggeration|terrain|contour|facet|resolution/i.test(issue) ? "Land contours"
       : /water|road|building|forest|tree|field/i.test(issue) ? "Map features"
-      : /tile|row|column|seam|layout/i.test(issue) ? "Tile layout"
+      : /tile|row|column|seam|layout/i.test(issue) ? (s.map_format==="artwork"?"Tile layout":"Holder plate layout")
       : /printer|nozzle|margin/i.test(issue) ? "Your printer"
       : "Name & exact coordinates";
-    go(["Tile layout", "Your printer", "Name & exact coordinates"].includes(heading) ? 0 : 1);
+    go(["Tile layout", "Holder plate layout", "Your printer"].includes(heading) ? MAKE_STEP : ["Name & exact coordinates", "Size & layout"].includes(heading) ? 0 : 1);
     requestAnimationFrame(() => {
       const summary = Array.from(panel.current?.querySelectorAll<HTMLElement>(".section > summary") ?? [])
         .find(element => element.querySelector(".section-label > span")?.textContent?.startsWith(heading));
+      if (heading === "Frame & caption" || heading === "Print colours") { revealSettingsGroup(heading); return; }
+      if (heading === "Map features") {
+        const featureName = /forest|tree/i.test(issue) ? "Trees & woodland" : /field/i.test(issue) ? "Field effects" : /water/i.test(issue) ? "Rivers & water" : /road/i.test(issue) ? "Roads" : "Buildings";
+        revealSettingsGroup(featureName); return;
+      }
       const section = summary?.parentElement as HTMLDetailsElement | undefined;
       if (!section || !summary) return;
       section.open = true;
@@ -379,6 +394,42 @@ export default function App() {
       summary.focus({ preventScroll: true });
       summary.scrollIntoView({ block: "nearest" });
     });
+  }
+  function revealSettingsGroup(heading: string) {
+    go(heading === "Size & layout" ? 0 : 1);
+    requestAnimationFrame(() => {
+      const feature = Array.from(panel.current?.querySelectorAll<HTMLElement>(".feature-group") ?? []).find(group => group.dataset.feature === heading);
+      if (feature) { const button = feature.querySelector<HTMLButtonElement>(".feature-details-button"); if (button?.getAttribute("aria-expanded") === "false") button.click(); button?.focus({ preventScroll: true }); feature.scrollIntoView({ block: "nearest" }); return; }
+      const details = Array.from(panel.current?.querySelectorAll<HTMLDetailsElement>("details.section") ?? []).find(detail => detail.querySelector(".section-label > span")?.textContent === heading);
+      if (details) { details.open = true; details.querySelector("summary")?.focus({ preventScroll: true }); details.scrollIntoView({ block: "nearest" }); }
+    });
+  }
+  function rememberDesign() {
+    if (!hasDraft) return;
+    try { setDesigns(saveDesign({ id: designId.current, updated: new Date().toISOString(), settings: s, jobId: job?.id, step, view, mapRatioLocked })); }
+    catch { setDraftStatus("Storage is full. Export your design to keep a copy."); }
+  }
+  function showChooser(mode: "new" | "change") { setChooserMode(mode); setChooserSession(value => value + 1); chooserDialog.current?.showModal(); }
+  function chooseProjectType(type: ProjectType, content: WallContent) {
+    if (chooserMode === "change") { changeSettings(configureProject(s, type, content)); go(0); }
+    else if (defaultsRef.current) {
+      rememberDesign();
+      const defaults = { ...defaultsRef.current, printer_width: s.printer_width, printer_height: s.printer_height, printer_z: s.printer_z, nozzle: s.nozzle, margin: s.margin };
+      const next = { ...defaults, ...configureProject(defaults, type, content, true) };
+      designId.current = crypto.randomUUID();
+      resetSettings(next); setJob(null); setSelected(null); setError(""); setHasDraft(true); setMapRatioLocked(true); go(0);
+    }
+    chooserDialog.current?.close();
+  }
+  async function openDesign(design: SavedDesign, print = false) {
+    if (!defaultsRef.current || busy || opening) return;
+    const restored = restoreDraft(design.settings, defaultsRef.current);
+    if (!restored) { setError("This saved design could not be restored. Import its exported design file instead."); setHome(false); return; }
+    rememberDesign(); setOpening(design.id);
+    const savedJob = design.jobId ? await api<Job>("/jobs/" + encodeURIComponent(design.jobId)).catch(() => null) : null;
+    designId.current = design.id; resetSettings(restored); setJob(savedJob?.result ? { ...savedJob, result: { ...savedJob.result, settings: { ...defaultsRef.current!, ...savedJob.result.settings, building_source: savedJob.result.settings.building_source ?? "osm", markers: savedJob.result.settings.markers ?? [] } } } : savedJob); setError(""); setSelected(null); clearPlaceSearch(); setHasDraft(true); setHome(false); setPlacingMarker(null);
+    setStep(print ? MAKE_STEP : Number.isInteger(design.step) && design.step >= 0 && design.step <= MAKE_STEP ? design.step : 1);
+    setView(["map", "layout", "3d", "trace"].includes(design.view) ? design.view as View : "map"); setMapRatioLocked(design.mapRatioLocked !== false); setOpening(null);
   }
   async function search(e: React.FormEvent) {
     e.preventDefault();
@@ -404,7 +455,7 @@ export default function App() {
       lat = Number(result.lat),
       validLocation = Number.isFinite(lon) && Number.isFinite(lat) && Math.abs(lon)<=180 && Math.abs(lat)<=90;
     if (!validLocation) { setError("The location provider returned invalid coordinates."); return; }
-    const ratio = (s.width - 2 * frameWidth) / (s.height - 2 * frameWidth);
+    const ratio = artworkRatio(activeMapSettings(s));
 
     patch({
       name: result.display_name.split(",")[0].slice(0, 64),
@@ -435,7 +486,7 @@ export default function App() {
       });
       setSelected(null);
       setView("3d");
-      setStep(2);
+      setStep(MAKE_STEP);
     } catch (e) {
       // Another tab may have started a job after this page was opened.
       if (e instanceof ApiError && e.status === 409) {
@@ -446,7 +497,7 @@ export default function App() {
             setJob(active);
             setSelected(null);
             setView("3d");
-            setStep(2);
+            setStep(MAKE_STEP);
             return;
           }
         } catch {
@@ -458,7 +509,7 @@ export default function App() {
       setStarting(false);
     }
   }
-  async function openProject(id: string) {
+  async function openProject(id: string, print = false) {
     if (busy || opening) return;
     setOpening(id);
     setProjectsError("");
@@ -486,14 +537,18 @@ export default function App() {
           },
         },
       });
-      setSettings(normalized);
+      rememberDesign();
+      resetSettings(normalized);
       clearPlaceSearch();
       setError("");
       setSelected(null);
       setPlacingMarker(null);
-      setStep(2);
+      designId.current = "generated-" + id;
+      setHasDraft(true);
+      setHome(false);
+      setStep(print ? MAKE_STEP : 1);
       setView("3d");
-      projectDialog.current?.close();
+
     } catch (e) {
       setProjectsError("Could not open this artwork: " + (e as Error).message);
     } finally {
@@ -515,9 +570,13 @@ export default function App() {
       if (file.size > 10 * 1024 * 1024) throw new Error("Choose a settings JSON smaller than 10 MB.");
       const parsed = JSON.parse(await file.text());
       const validated = await api<Settings>("/validate", parsed);
-      setSettings(validated);
+      rememberDesign();
+      resetSettings(validated);
       setError("");
-      go(0);
+      designId.current = crypto.randomUUID();
+      setHasDraft(true);
+      setJob(null);
+      go(1);
       clearPlaceSearch();
     } catch (e) {
       setError("Could not import settings: " + (e as Error).message);
@@ -530,15 +589,19 @@ export default function App() {
     catch (e) { setProjectsError((e as Error).message); }
     finally { setProjectsLoading(false); }
   }
-  const filteredProjects = projects.filter((p) => p.name.toLowerCase().includes(projectQuery.toLowerCase())).sort((a, b) => projectSort === "name" ? a.name.localeCompare(b.name) : projectSort === "oldest" ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at));
+  function showProjects() {
+    document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close());
+    rememberDesign(); setNavigation("studio"); setHome(true); void refreshProjects();
+  }
   const minutes = Math.floor(elapsed / 60),
     seconds = elapsed % 60;
   return (
     <div className="app-shell">
       <nav className="app-navigation" aria-label="Main navigation">
-        <button className={`app-nav-item${navigation === "studio" ? " active" : ""}`} aria-label="Studio" aria-current={navigation === "studio" ? "page" : undefined} title="Studio" onClick={() => { document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close()); setNavigation("studio"); }}><BrandMark size={30} /><span>Studio</span></button>
-        <button ref={filesButton} className={`app-nav-item${navigation === "files" ? " active" : ""}`} aria-label="Files" aria-haspopup="dialog" title="Files" disabled={busy} onClick={() => { setNavigation("files"); projectDialog.current?.showModal(); void refreshProjects(); }}><FolderOpen size={23} /><span>Files</span></button>
-        <button ref={settingsButton} className={`app-nav-item app-nav-settings${navigation === "settings" ? " active" : ""}`} aria-label="Settings" aria-haspopup="dialog" title="Settings" onClick={() => { setNavigation("settings"); settingsDialog.current?.showModal(); }}><SettingsIcon size={23} /><span>Settings</span></button>
+        <button className={`app-nav-item${home ? " active" : ""}`} aria-label="Projects home" aria-current={home ? "page" : undefined} title="Projects" disabled={busy} onClick={showProjects}><BrandMark size={30} /><span>Projects</span></button>
+        <button className={`app-nav-item${!home ? " active" : ""}`} aria-label="Current project" aria-current={!home ? "page" : undefined} title={hasDraft ? s.name : "Create a project first"} disabled={!hasDraft || !!opening} onClick={() => { document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close()); setHome(false); }}><Map size={23} /><span>Current<br />project</span></button>
+        <button ref={helpButton} className={`app-nav-item app-nav-help${navigation === "help" ? " active" : ""}`} aria-label="Help" aria-haspopup="dialog" onClick={() => { setNavigation("help"); helpDialog.current?.showModal(); }}><CircleHelp size={23} /><span>Help</span></button>
+        <button ref={settingsButton} className={`app-nav-item${navigation === "settings" ? " active" : ""}`} aria-label="Settings" aria-haspopup="dialog" title="Settings" onClick={() => { setNavigation("settings"); settingsDialog.current?.showModal(); }}><SettingsIcon size={23} /><span>Settings</span></button>
       </nav>
       <header className="header">
         <div className="app-brand-block">
@@ -556,17 +619,17 @@ export default function App() {
         </a>
         <button ref={creatorCredit} className="app-creator-credit" aria-label="About Louis Goldsbrough" aria-haspopup="dialog" onClick={() => creatorDialog.current?.showModal()}>by Louis Goldsbrough</button>
         </div>
-        <nav className="stepper" aria-label="Create your artwork">
+        {!home && <nav className="stepper" aria-label="Edit your artwork">
           {steps.map((item, i) => (
             <button
               key={item.name}
               className={`step ${step === i ? "active" : ""} ${i < step ? "visited" : ""}`}
-              aria-current={step === i ? "step" : undefined}
+              aria-current={step === i ? "page" : undefined}
               disabled={busy}
               onClick={() => go(i)}
             >
               <span className="step-number">
-                {i < step ? <Check size={14} /> : i + 1}
+                {i === 0 ? <MapPin size={16} /> : i === 1 ? <Palette size={16} /> : <Printer size={16} />}
               </span>
               <span>{item.name}</span>
               {i < steps.length - 1 && (
@@ -574,10 +637,12 @@ export default function App() {
               )}
             </button>
           ))}
-        </nav>
+        </nav>}
+        {home && <span className="start-header-note">Your free map art studio</span>}
       </header>
       {hostedWorkspace && <div className="hosting-note"><Monitor size={15} /><span>Design here. Generate and print on your computer.</span><button onClick={() => helpDialog.current?.showModal()}>How it works <ArrowRight size={14} /></button></div>}
-      <div className="workspace" id="workspace">
+      {home ? <ProjectStart designs={designs} projects={projects} loading={projectsLoading} error={projectsError} hasDraft={hasDraft} busy={!!busy || !!opening} onNew={() => showChooser("new")} onResume={() => setHome(false)} onOpenDesign={(design, print) => void openDesign(design, print)} onOpenProject={(id, print) => void openProject(id, print)} onRefresh={() => void refreshProjects()} onImport={() => importInput.current?.click()} /> : <>
+      <div className="workspace" id="workspace" data-step={active.name.toLowerCase()}>
         <aside
           className="sidebar"
           ref={panel}
@@ -585,8 +650,7 @@ export default function App() {
         >
           <div className="sidebar-title">
             <span className="eyebrow">
-              STEP {String(step + 1).padStart(2, "0")} /{" "}
-              {String(steps.length).padStart(2, "0")}
+              {projectNames[projectType(s)]} · {active.name}
             </span>
             <h1 tabIndex={-1} ref={stepHeading}>
               {active.title}
@@ -595,6 +659,7 @@ export default function App() {
           </div>
           {step === 0 && (
             <div className="place-panel">
+              <TilePicker settings={s} onChange={changeSettings}/>
               <form onSubmit={search} className="location-block">
                 <label className="input-label" htmlFor="location-search">
                   Search for a place
@@ -674,20 +739,24 @@ export default function App() {
             id="settings-form"
             onSubmit={(e) => {
               e.preventDefault();
-              if (step === 2) void generate();
+              if (step === MAKE_STEP) void generate();
             }}
           >
             <fieldset disabled={busy}>
-              {step < 2 ? (
+              {step < MAKE_STEP ? (
                 <>
+                  {step === 1 && <><TilePicker settings={s} onChange={changeSettings}/><SettingsPanel section="style" settings={s} onChange={changeSettings} fits={fits} placing={null} onPlace={() => {}} /><SettingsPanel section="frame" settings={s} onChange={changeSettings} fits={fits} placing={null} onPlace={() => {}} /></>}
+                  {step === 0 && <Section open heading="Size & layout" icon={<Ruler size={18}/>} description={`${displaySize(s.width)} × ${displaySize(s.height)} mm · ${projectNames[projectType(s)]}`}>
+                    <SettingsPanel section="format" settings={s} onChange={changeSettings} fits={fits} placing={null} onPlace={() => {}} />
+                  </Section>}
                   <SettingsPanel
-                    key={step}
-                    section={step === 0 ? "size" : "style"}
+                    section={step === 0 ? "location" : "details"}
                     settings={s}
                     onChange={changeSettings}
                     fits={fits}
                     placing={placingMarker}
                     onPlace={(id) => {
+                      setDraftTrailPoints([]);
                       setPlacingMarker(id);
                       setView("map");
                     }}
@@ -739,6 +808,7 @@ export default function App() {
                 </>
               ) : (
                 <div className="make-panel">
+                  <SettingsPanel section="make" settings={s} onChange={changeSettings} fits={fits} placing={null} onPlace={() => {}} />
                   <div className="review-card">
                     <span className="review-icon">
                       {ready ? <CircleCheck size={28} /> : <Layers size={28} />}
@@ -748,19 +818,19 @@ export default function App() {
                         ? "Your print pack is ready"
                         : failedModel ? "Let’s try that again."
                         : stale
-                          ? "Ready for another look?"
+                          ? "Update your print plates"
                           : "Your artwork, at a glance"}
                     </strong>
                     <p>
                       {ready
-                        ? "Inspect your model and download the complete set below."
-                        : "We’ll turn your selected area into a 3D model and check every piece."}
+                        ? "Open every prepared plate in Bambu Studio below."
+                        : stale ? "Your artwork has changed. Prepare the plates again to include your latest edits." : "Your map, frame and joining pieces will be checked and arranged on print plates."}
                     </p>
                   </div>
                   {failedModel && <div className="generation-recovery" role="status">
                     <p>Your design is saved. Review your style or try generating again.</p>
                     {s.multicolour && <><p>You can also retry in single colour with the same place and details.</p><button type="button" onClick={() => { patch({ multicolour: false }); setError(""); }}><Printer size={16} />Use single-colour printing</button></>}
-                    <button type="button" onClick={() => go(1)}><Palette size={16} />Review style</button>
+                    <button type="button" onClick={() => go(1)}><Palette size={16} />Review details</button>
                     <details className="advanced"><summary>Show error details</summary><p>{job.message}</p></details>
                   </div>}
                   <div className="review-list">
@@ -775,15 +845,14 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
-                        go(0);
-                        setView("layout");
+                        revealSettingsGroup("Size & layout");
                       }}
                     >
                       <Ruler size={18} />
                       <span>
                         <small>Finished size</small>
                         <strong>
-                          {s.width} × {s.height} mm · {count} {tileNoun}
+                          {displaySize(s.width)} × {displaySize(s.height)} mm · {count} {tileNoun}
                         </strong>
                       </span>
                       <ChevronRight size={16} />
@@ -792,7 +861,7 @@ export default function App() {
                       <Mountain size={18} />
                       <span>
                         <small>Landscape</small>
-                        <strong>{s.terrain_style.charAt(0).toUpperCase() + s.terrain_style.slice(1)} · {s.exaggeration}× height</strong>
+                        <strong>{s.map_format === "jigsaw" ? `Almost flat · ${s.puzzle_relief} mm relief` : `${s.terrain_style.charAt(0).toUpperCase() + s.terrain_style.slice(1)} · ${s.exaggeration}× height`}</strong>
                       </span>
                       <ChevronRight size={16} />
                     </button>
@@ -807,6 +876,7 @@ export default function App() {
                           s.forests ? "Forests" : "",
                           s.fields ? "Fields" : "",
                           s.landmarks ? "Landmarks" : "",
+                          s.trails.length ? `${s.trails.length} trail${s.trails.length === 1 ? "" : "s"}` : "",
                         ].filter(Boolean).join(" · ") || "Terrain only"}</strong>
                       </span>
                       <ChevronRight size={16} />
@@ -819,16 +889,14 @@ export default function App() {
                       </span>
                       <ChevronRight size={16} />
                     </button>
-                    <button type="button" onClick={() => go(1)}>
-                      <Palette size={18} />
-                      <span>
-                        <small>Frame & special places</small>
-                        <strong>
-                          {s.frame_mode === "none" ? "No frame" : s.frame_mode === "separate" ? "Slide-in frame" : "Built-in frame"} ·{" "}
-                          {s.markers.length} special{" "}
-                          {s.markers.length === 1 ? "place" : "places"}
-                        </strong>
-                      </span>
+                    <button type="button" onClick={() => revealSettingsGroup("Frame & caption")}>
+                      <Box size={18} />
+                      <span><small>Frame</small><strong>{s.frame_mode === "none" ? "No frame" : s.frame_mode === "separate" ? "Slide-in frame" : "Built-in frame"}</strong></span>
+                      <ChevronRight size={16} />
+                    </button>
+                    <button type="button" onClick={() => reviewSettings("marker")}>
+                      <MapPin size={18} />
+                      <span><small>Special places</small><strong>{s.markers.length} {s.markers.length === 1 ? "place" : "places"}</strong></span>
                       <ChevronRight size={16} />
                     </button>
                   </div>
@@ -848,8 +916,9 @@ export default function App() {
                   <div className="pack-includes">
                     <span className="eyebrow">IN YOUR PRINT PACK</span>
                     {[
-                      "Individual STL print files",
-                      "Assembled 3MF model",
+                      "All pieces arranged on Bambu print plates",
+                      "Colour assignments & required quantities",
+                      "Individual STL files for other slicers",
                       "Assembly guide & saved settings",
                       ...(s.joints ? ["Joining key & fit-test pieces"] : []),
                     ].map((label) => (
@@ -870,7 +939,7 @@ export default function App() {
           <div className="settings-files">
             <button onClick={saveSettings}>
               <Save size={15} />
-              Save settings
+              Export design
             </button>
             <button
               disabled={busy}
@@ -879,16 +948,7 @@ export default function App() {
               <Upload size={15} />
               Import
             </button>
-            <input
-              ref={importInput}
-              type="file"
-              hidden
-              accept="application/json,.json"
-              onChange={(e) => {
-                if (e.target.files?.[0]) void importSettings(e.target.files[0]);
-                e.target.value = "";
-              }}
-            />
+
           </div>
           </Section>
         </aside>
@@ -897,6 +957,7 @@ export default function App() {
             <div>
               <span className="eyebrow">YOUR ARTWORK</span>
               <h2>{s.name}</h2>
+              <button className="project-type-link" disabled={busy} onClick={() => showChooser("change")}>{projectNames[projectType(s)]} · Change type <ChevronRight size={13}/></button>
               <div className="design-status"><BookmarkCheck size={13} /><span role="status">{draftStatus}</span></div>
             </div>
             <div className="workspace-actions">
@@ -913,7 +974,7 @@ export default function App() {
                 [
                   ["map", Map, "Map"],
                   ["trace", Plus, "Add missing details"],
-                  ["layout", Ruler, "Tile layout"],
+                  ["layout", Ruler, "Artwork layout"],
                   ["3d", Box, "3D preview"],
                 ] as const
               ).map(([name, Icon, label]) => (
@@ -937,10 +998,18 @@ export default function App() {
           {error && (
             <div className="alert" role="alert">
               <TriangleAlert size={18} />
-              <span>{technicalFailure && error === job.message ? "We couldn’t generate this model. Your design is saved; recovery options are in Make." : error}</span>
+              <span>{technicalFailure && error === job.message ? "We couldn’t generate this model. Your design is saved; recovery options are in Print." : error}</span>
               <button onClick={() => setError("")} aria-label="Dismiss error">
                 <X size={17} />
               </button>
+            </div>
+          )}
+          {boundsValid && selectedArea > MAX_BUILDING_AREA_KM2 && (
+            <div className="stale-note" role="status">
+              <TriangleAlert size={18} />
+              <span><strong>Large area · {selectedArea.toLocaleString("en-GB", { maximumFractionDigits: 1 })} km²</strong><br />
+                Mapped building detail will not be shown above {MAX_BUILDING_AREA_KM2} km². Reduce your selection to include buildings. If this area is too large for mapped landscape detail or the map service is unavailable, generation continues with real terrain and lists the omitted detail in the finished model.
+              </span>
             </div>
           )}
           {stale && view === "3d" && (
@@ -951,8 +1020,8 @@ export default function App() {
                   ? "Updated printable geometry is available. Rebuild this model to apply it."
                   : "Changes haven’t been built yet. This preview uses your last generated settings."}
               </span>
-              {step !== 2 && (
-                <button onClick={() => go(2)}>
+              {step !== MAKE_STEP && (
+                <button onClick={() => go(MAKE_STEP)}>
                   Update model <ArrowRight size={15} />
                 </button>
               )}
@@ -961,10 +1030,11 @@ export default function App() {
           {placingMarker && (
             <div className="placement-note" role="status">
               <MapPin size={18} />
-              <span>Click inside the selected area to place your symbol.</span>
+              <span>{placingMarker.startsWith("trail:")?placingMarker==="trail:new"?`${draftTrailPoints.length} points selected. Click at least two points to start a trail.`:"Click inside the map to extend your trail. Finish drawing in Trails, or press Escape.":"Click inside the selected area to place your symbol."}</span>
               <button onClick={() => setPlacingMarker(null)}>Cancel</button>
             </div>
           )}
+          {step !== MAKE_STEP && <div className="edit-shortcuts" role="group" aria-label="Quick edit"><button disabled={busy} onClick={() => go(0)}><MapPin size={15}/>Place</button><button disabled={busy} onClick={() => { revealSettingsGroup("Size & layout"); }}><Ruler size={15}/>Size & layout</button><button disabled={busy} onClick={() => revealSettingsGroup("Frame & caption")}><Box size={15}/>Frame</button><button disabled={busy} onClick={() => revealSettingsGroup("Print colours")}><Palette size={15}/>Colours</button></div>}
           <div className="canvas-wrap">
             <WorkspaceBoundary key={view}>
             <Suspense
@@ -976,10 +1046,10 @@ export default function App() {
               }
             >
               {view === "trace" ? (
-                <TraceEditor settings={s} onChange={patch} disabled={busy} onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
+                <TraceEditor settings={mapSettings} onChange={patch} disabled={busy} onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
               ) : view === "map" ? (
                 <MapView
-                  settings={s}
+                  settings={mapSettings}
                   ratioLocked={mapRatioLocked}
                   onRatioLockedChange={setMapRatioLocked}
                   editable={!busy && step === 0}
@@ -988,6 +1058,19 @@ export default function App() {
                   }}
                   placingMarker={busy ? null : placingMarker}
                   onPlaceMarker={(lon, lat) => {
+                    if(placingMarker?.startsWith('trail:')) {
+                      const id=placingMarker.slice(6);
+                      if(id==='new') {
+                        const points=[...draftTrailPoints,[lon,lat] as [number,number]];
+                        if(points.length<2){setDraftTrailPoints(points);return;}
+                        if(points[0][0]===lon&&points[0][1]===lat)return;
+                        const trailId=crypto.randomUUID();
+                        patch({trails:[...s.trails,{id:trailId,name:'Drawn trail',points,style:'raised',width:1.6,height:.8}]});
+                        setDraftTrailPoints([]);setPlacingMarker('trail:'+trailId);return;
+                      }
+                      patch({trails:s.trails.map(t=>t.id===id?{...t,points:[...t.points,[lon,lat] as [number,number]]}:t)});
+                      return;
+                    }
                     if (!busy)
                       patch({
                         markers: s.markers.map((m) =>
@@ -999,7 +1082,7 @@ export default function App() {
                   onCancelMarker={() => setPlacingMarker(null)}
                 />
               ) : view === "layout" ? (
-                <LayoutView settings={s} fits={fits} />
+                collection(s) ? <CollectionLayout settings={s} onGrow={direction=>changeSettings(direction === "column" ? {collection_columns:s.collection_columns+1} : {collection_rows:s.collection_rows+1})} onTile={i=>{const t=s.map_tiles[i];patch({active_tile:i,name:t.name,bounds:t.bounds,markers:t.markers,trails:t.trails,custom_buildings:t.custom_buildings??[],reference_image:t.reference_image??null});go(0);}}/> : s.map_format==="jigsaw" ? <PuzzleLayout settings={s}/> : <LayoutView settings={s} fits={fits} />
               ) : model && job ? (
                 <Preview
                   id={job.id}
@@ -1007,7 +1090,7 @@ export default function App() {
                   settings={s}
                   selected={selected}
                   onSelect={setSelected}
-                  inspect={step === 2}
+                  inspect={step === MAKE_STEP}
                 />
               ) : (
                 <div className={`empty-preview ${busy ? "generating" : ""}`}>
@@ -1049,9 +1132,9 @@ export default function App() {
                           : "Larger areas can take a few minutes."}
                       </small>
                     </div>
-                  ) : step !== 2 ? (
-                    <button onClick={() => go(2)}>
-                      Continue to Make
+                  ) : step !== MAKE_STEP ? (
+                    <button onClick={() => go(MAKE_STEP)}>
+                      Prepare to print
                       <ArrowRight size={16} />
                     </button>
                   ) : null}
@@ -1076,22 +1159,23 @@ export default function App() {
               </span>
               <span>
                 {view === "3d" && model
-                  ? `${model.settings.width} × ${model.settings.height}`
-                  : `${s.width} × ${s.height}`}{" "}
+                  ? `${displaySize(model.settings.width)} × ${displaySize(model.settings.height)}`
+                  : `${displaySize(s.width)} × ${displaySize(s.height)}`}{" "}
                 mm <span className="caption-divider">/</span>{" "}
                 {view === "3d" && model
                   ? model.layout.columns * model.layout.rows
                   : count}{" "}
                 {view === "3d" && model
-                  ? model.layout.columns * model.layout.rows === 1
+                  ? model.settings.map_format==="jigsaw" ? "pieces" : collection(model.settings) ? "maps" : model.layout.columns * model.layout.rows === 1
                     ? "tile"
                     : "tiles"
                   : tileNoun}
               </span>
             </div>
           </div>
-          {step === 2 && model && job && (
+          {step === MAKE_STEP && model && job && (
             <PrintPackage
+              ref={printPackage}
               jobId={job.id}
               model={model}
               selected={selected}
@@ -1105,16 +1189,15 @@ export default function App() {
               stale={stale}
             />
           )}
-          {step !== 2 && (
+          {step !== MAKE_STEP && (
             <div className="workspace-note">
               <span>
                 {view === "trace"
                   ? "Added buildings are saved with your design and included when you generate the model."
-                  : step === 0
-                  ? view === "layout"
-                    ? "The finished artwork includes the frame. Each tile prints separately and joins into one piece."
-                    : "Adjust your selected area and artwork size, then make it your own."
-                  : "Style changes are applied when you generate your model."}
+                  : step === 1
+                  ? "Finished size includes the frame. The layout updates as you change your design."
+                  : step === 0 ? "Move or resize the selection to choose your map area."
+                  : "Detail changes are applied when you generate your model."}
               </span>
               <span className="north-note"><ArrowRight size={13} style={{ transform: "rotate(-90deg)" }} aria-hidden="true" />North up</span>
             </div>
@@ -1138,9 +1221,9 @@ export default function App() {
                 ? connectionError
                   ? "Reconnecting to your model…"
                   : job?.message || "Starting your model…"
-                : step === 2 && ready
+                : step === MAKE_STEP && ready
                   ? "Mesh checked · Print pack ready"
-                  : `${s.width} × ${s.height} mm`}
+                  : `${displaySize(s.width)} × ${displaySize(s.height)} mm`}
             </strong>
             <span>
               {busy
@@ -1160,21 +1243,18 @@ export default function App() {
               Back
             </button>
           )}
-          {step === 2 && ready && job ? (
-            <a className="primary" href={`/api/files/${job.id}/project.zip`}>
-              <Download size={18} />
-              Download print pack
-            </a>
+          {step === MAKE_STEP && ready && job ? (
+            <button className="primary" onClick={() => { document.querySelector(".print-package")?.scrollIntoView({ block: "start", behavior: "smooth" }); printPackage.current?.open(); }}><Printer size={18}/>Open in Bambu Studio</button>
           ) : (
             <button
               className="primary"
               disabled={
                 busy ||
-                (step === 2 && !canGenerate) ||
-                (step === 0 && (!boundsValid || !fits || !s.name.trim()))
+                (step === MAKE_STEP && !canGenerate) ||
+                (step === 0 && (!boundsValid || !s.name.trim()))
               }
               onClick={() => {
-                if (step === 2) void generate();
+                if (step === MAKE_STEP) void generate();
                 else {
                   const form =
                     document.querySelector<HTMLFormElement>("#settings-form");
@@ -1184,12 +1264,12 @@ export default function App() {
             >
               {busy ? <LoaderCircle className="spin" size={18} /> : null}
               {busy
-                ? "Generating model…"
-                : step === 2 && stale
-                  ? "Update model"
-                  : step === 2 && job?.status === "failed"
+                ? "Preparing your artwork…"
+                : step === MAKE_STEP && stale
+                  ? "Update print plates"
+                  : step === MAKE_STEP && job?.status === "failed"
                     ? "Try generating again"
-                    : step === 2 && hostedWorkspace
+                    : step === MAKE_STEP && hostedWorkspace
                       ? "Continue to local printing"
                       : active.next}
               {!busy && <ArrowRight size={17} />}
@@ -1197,17 +1277,23 @@ export default function App() {
           )}
         </div>
       </footer>
+      </>}
+      <input ref={importInput} type="file" hidden accept="application/json,.json" onChange={event => { if (event.target.files?.[0]) void importSettings(event.target.files[0]); event.target.value = ""; }} />
+      <dialog ref={chooserDialog} className="project-chooser-dialog" aria-labelledby="project-chooser-title" onClick={event => { if (event.target === event.currentTarget) chooserDialog.current?.close(); }}>
+        <div className="panel-heading"><div><span className="eyebrow">{chooserMode === "new" ? "START SOMETHING PERSONAL" : "YOUR PROJECT, YOUR WAY"}</span><h2 id="project-chooser-title">{chooserMode === "new" ? "What would you like to make?" : "Change project type"}</h2></div><button aria-label="Close project chooser" onClick={() => chooserDialog.current?.close()}><X size={20}/></button></div>
+        <ProjectChooser key={chooserSession} initialContent={collection(s) ? "places" : "continuous"} current={chooserMode === "change" ? projectType(s) : undefined} onCancel={() => chooserDialog.current?.close()} onChoose={chooseProjectType}/>
+      </dialog>
       <dialog ref={creatorDialog} className="help-dialog creator-dialog" aria-labelledby="creator-dialog-title" onClose={() => creatorCredit.current?.focus()} onClick={e => { if (e.target === e.currentTarget) creatorDialog.current?.close(); }}>
         <div className="panel-heading"><h2 id="creator-dialog-title">Meet the maker</h2><button aria-label="Close about Louis" onClick={() => creatorDialog.current?.close()}><X size={20} /></button></div>
         <Creator headingId="app-creator-title" compact />
       </dialog>
-      <dialog ref={helpDialog} className="help-dialog" aria-labelledby="help-title" onClick={e => { if (e.target === e.currentTarget) helpDialog.current?.close(); }}>
+      <dialog ref={helpDialog} onClose={() => { setNavigation("studio"); helpButton.current?.focus(); }} className="help-dialog" aria-labelledby="help-title" onClick={e => { if (e.target === e.currentTarget) helpDialog.current?.close(); }}>
         <div className="panel-heading"><div><span className="eyebrow">A LITTLE PIECE OF THE WORLD</span><h2 id="help-title">From map to mantelpiece.</h2></div><button aria-label="Close help" onClick={() => helpDialog.current?.close()}><X size={20} /></button></div>
         <p className="help-intro">Choose somewhere that means something to you. Turn its landscape into an artwork you can hold.</p>
         <ol className="help-steps">
-          <li><MapPin size={22} /><div><strong>Find your place</strong><p>Search anywhere, move the selection, and choose a size that suits your space and printer.</p></div></li>
-          <li><Palette size={22} /><div><strong>Give it your own character</strong><p>Shape the relief, pick a frame, and mark the places that matter.</p></div></li>
-          <li><Printer size={22} /><div><strong>Make it on your computer</strong><p>{hostedWorkspace ? "Save your settings below. Open the local app, import the file, then choose Generate model. Your computer builds the printable pieces." : "Generate your model, inspect the preview, then download your print pack. Start with a fit-test piece before printing the full artwork."}</p></div></li>
+          <li><MapPin size={22}/><div><strong>Choose a project and a place</strong><p>Start with a single map, modular wall or jigsaw. Choose your location, size and layout together on the map.</p></div></li>
+          <li><Palette size={22}/><div><strong>Make it yours</strong><p>Choose a style, frame and colours. Toggle features, expand their details and use Undo whenever you need it.</p></div></li>
+          <li><Printer size={22}/><div><strong>Prepare every piece</strong><p>Choose your printer and prepare your artwork. Open all pieces on arranged plates in Bambu Studio, confirm your printer and filaments, then slice.</p></div></li>
         </ol>
         {hostedWorkspace && <p className="help-install">Download Contour Studio for macOS or Windows, then import your saved settings. The desktop app includes its generation engine. <a href="./#downloads">Get the free desktop app</a>.</p>}
         <div className="help-actions"><button className="primary" onClick={saveSettings}><Download size={17} />Save settings</button>{hostedWorkspace && <a href="http://127.0.0.1:8767" target="_blank" rel="noreferrer">Open local workspace <ExternalLink size={15} /></a>}</div>
@@ -1226,80 +1312,7 @@ export default function App() {
         <section className="app-settings-section"><h3>App updates</h3><AppUpdates busy={!!busy} /><p className="hint">{hostedWorkspace ? "The browser workspace updates automatically. Get the latest desktop app from the release page." : "Check for the latest version of Contour Studio for your computer."}</p><a href={releaseUrl} target="_blank" rel="noopener noreferrer">Downloads & release notes <ExternalLink size={14} /></a></section>
         <section className="app-settings-section"><h3>Help & support</h3><button onClick={() => { settingsDialog.current?.close(); helpDialog.current?.showModal(); }}><CircleHelp size={18} />How it works</button><CoffeeLink className="app-coffee-link" /></section>
       </dialog>
-      <dialog
-        onClose={() => { setNavigation("studio"); filesButton.current?.focus(); }}
-        ref={projectDialog}
-        className="projects-dialog"
-        aria-labelledby="projects-title"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) projectDialog.current?.close();
-        }}
-      >
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">ON THIS COMPUTER</span>
-            <h2 id="projects-title">Files</h2>
-          </div>
-          <button
-            aria-label="Close projects"
-            onClick={() => projectDialog.current?.close()}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <p className="hint">
-          Open a generated artwork to edit it or download its files.
-        </p>
-        <div className="project-library-tools">
-          <label className="library-search"><Search size={17} /><input aria-label="Search saved projects" placeholder="Find an artwork…" value={projectQuery} onChange={(e) => setProjectQuery(e.target.value)} /></label>
-          <select aria-label="Sort saved projects" value={projectSort} onChange={(e) => setProjectSort(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name">Name A–Z</option></select>
-        </div>
-        <div className="project-library-summary"><span role="status">{projectsLoading ? "Refreshing projects…" : `${filteredProjects.length} ${filteredProjects.length === 1 ? "artwork" : "artworks"}`}</span><button disabled={!!opening} onClick={() => { if (defaultsRef.current) { setSettings(defaultsRef.current); setJob(null); setSelected(null); setError(""); clearPlaceSearch(); setMapRatioLocked(true); go(0); projectDialog.current?.close(); } }}><Plus size={16} />New artwork</button></div>
-        {projectsError && <div className="inline-error" role="alert"><p>{projectsError}</p><button disabled={projectsLoading} onClick={() => void refreshProjects()}>Refresh projects</button></div>}
-        <div className="project-list">
-          {filteredProjects.length ? (
-            filteredProjects.map((p) => (
-              <button
-                className="project-item"
-                key={p.id}
-                disabled={!!opening}
-                onClick={() => void openProject(p.id)}
-              >
-                <span className="project-thumb">
-                  <Layers size={24} />
-                </span>
-                <span>
-                  <strong>{p.name}</strong>
-                  <small>
-                    {new Date(p.created_at).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}{" "}
-                    · {p.layout.columns * p.layout.rows}{" "}
-                    {p.layout.columns * p.layout.rows === 1 ? "tile" : "tiles"}
-                  </small>
-                  {p.width && p.height ? <small>{p.width} × {p.height} mm{p.terrain_style ? ` · ${p.terrain_style.charAt(0).toUpperCase() + p.terrain_style.slice(1)}` : ""}</small> : null}
-                </span>
-                {opening === p.id ? (
-                  <LoaderCircle className="spin" size={19} />
-                ) : (
-                  <ArrowRight size={19} />
-                )}
-              </button>
-            ))
-          ) : projectsLoading ? (
-            <div className="projects-empty" role="status"><LoaderCircle className="spin" size={28} /><p>Loading your artworks…</p></div>
-          ) : projectsError ? null : (
-            <div className="projects-empty">
-              <FolderOpen size={35} />
-              <h3>{projectQuery ? "No matching artworks." : "Your next project starts here."}</h3>
-              <p>{projectQuery ? "Try another name or clear your search." : "Generated artworks will appear here automatically."}</p>
-              {projectQuery && <button onClick={() => setProjectQuery("")}>Clear search</button>}
-            </div>
-          )}
-        </div>
-      </dialog>
+
     </div>
   );
 }

@@ -232,6 +232,7 @@ def test_actual_landcover_is_requested_and_parsed_with_holes(monkeypatch):
         {'type':'way','id':2,'tags':{'landuse':'farmland'},'geometry':ring(b.west,b.east,b.south,b.north)},
         {'type':'way','id':3,'tags':{'natural':'grassland'},'geometry':ring(b.west,b.east,b.south,b.north)}]}
     monkeypatch.setattr(Downloader,'download',lambda *a:raw)
+    monkeypatch.setattr('backend.trees.download',lambda *a:([],{}))
     features,_=geo.vectors(quiet)
     assert [kind for kind,_,_ in features]==['forest','field','grass']
     assert len(features[0][1].interiors)==1
@@ -264,7 +265,7 @@ def test_grouped_woodland_and_tree_types_change_the_geometry():
     assert volumes['groves','conifer']<volumes['groves','mixed']<volumes['groves','broadleaf']
 
 
-def test_rounded_rows_keep_boundaries_and_round_the_ends_of_square_rows():
+def test_rounded_rows_keep_boundaries_and_have_arched_tops_and_ends():
     from backend.geometry import landcover_geometry
     field=box(10,10,40,40)
     exclusion=box(20,20,30,30)
@@ -275,10 +276,22 @@ def test_rounded_rows_keep_boundaries_and_round_the_ends_of_square_rows():
         results[style]=landcover_geometry(Polygon(),field,exclusion,original,
             settings(fields=True,field_style=style,field_angle=0),sample,20)
     rounded=results['rounded']; square=results['furrows']
-    assert 0<rounded[1].volume()<square[1].volume()
+    assert 0<(rounded[1]-original).volume()<(square[1]-original).volume()
     assert rounded[6].difference(field.difference(exclusion).buffer(.005)).area<1e-6
     assert rounded[6].area<square[6].area
     assert len(rounded[6].geoms[0].exterior.coords)>len(square[6].geoms[0].exterior.coords)
+    vertices=as_trimesh(rounded[1]).vertices
+    # Inspect the middle of a row, away from its rounded ends: the crown
+    # must be higher than the shoulders, rather than a flat extruded strip.
+    interior=vertices[(vertices[:,0]>12)&(vertices[:,0]<18)]
+    centre=10+Settings().field_spacing/2
+    radius=min(Settings().field_spacing*.4,max(Settings().nozzle*2,.6))/2
+    peak=interior[np.isclose(interior[:,1],centre),2].max()
+    shoulder=interior[np.isclose(interior[:,1],centre+radius*np.sin(np.pi/4)),2].max()
+    assert peak==pytest.approx(4+Settings().field_height)
+    assert shoulder==pytest.approx(4+Settings().field_height*np.cos(np.pi/4))
+    assert shoulder<peak
+    assert as_trimesh(rounded[1]).is_volume
     assert results['flat'][1].is_empty()
     assert Settings().field_style=='rounded'
     for change in [{'field_style':'bad'},{'tree_type':'bad'},{'forest_grouping':'bad'}]:

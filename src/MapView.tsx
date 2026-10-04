@@ -196,6 +196,15 @@ function StandardMapView({ settings, ratioLocked: locked, onRatioLockedChange, e
       frame = 0;
       if (markerLayer.current) {
         markerLayer.current.replaceChildren();
+        const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+        svg.style.cssText='position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none';
+        for(const trail of latest.current.trails??[]) {
+          const line=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+          line.setAttribute('points',trail.points.map(([lon,lat])=>{const p=m.project([latest.current.bounds.west+(lon-latest.current.bounds.west+180+360)%360-180,lat]);return `${p.x},${p.y}`;}).join(' '));
+          line.setAttribute('fill','none');line.setAttribute('stroke','#b3472e');line.setAttribute('stroke-width','4');line.setAttribute('stroke-linecap','round');line.setAttribute('stroke-linejoin','round');
+          const title=document.createElementNS('http://www.w3.org/2000/svg','title');title.textContent=trail.name;line.append(title);svg.append(line);
+        }
+        markerLayer.current.append(svg);
         for (const marker of latest.current.markers) {
           const el = document.createElement("span");
           el.className = "location-symbol";
@@ -597,7 +606,7 @@ function StandardMapView({ settings, ratioLocked: locked, onRatioLockedChange, e
           ? placementError ||
             "Click inside the area to place your symbol · Esc to cancel"
           : !editable
-            ? "Drag to explore · Change your area in Place & size"
+            ? "Drag to explore · Change your area in Place"
             : mode === "draw"
               ? "Drag out a new area. Press Esc to cancel."
               : mode === "pan"

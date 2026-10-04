@@ -90,6 +90,18 @@ export default function TerrainStyles({ settings: s, onChange }: {
           hint="Larger facets create bolder, more angular slopes." />
       )}
       <div className="terrain-adjustments">
+        <h4>Land height variation</h4>
+        <div className="quality-options" role="group" aria-label="Land height variation presets">
+          {[[1, "Keep current relief"], [0.75, "Slightly flatter"], [0.5, "Much flatter"]].map(([value, label]) =>
+            <button key={value} type="button" aria-pressed={(s.land_variation ?? 1) === value}
+              onClick={() => onChange({ land_variation: Number(value) })}>{label}</button>)}
+        </div>
+        <label className="field"><span>Custom variation · {Math.round((s.land_variation ?? 1) * 100)}%</span>
+          <input type="range" min="0" max="100" step="1" aria-label="Custom land height variation"
+            value={Math.round((s.land_variation ?? 1) * 100)}
+            onChange={e => onChange({ land_variation: Number(e.target.value) / 100 })} />
+        </label>
+        <p className="hint">100% keeps the current relief; 0% makes the land flat. Hills stay in place. {s.map_format === "jigsaw" ? "All heights are compressed to the puzzle relief limit." : "Buildings keep their own heights."}</p>
           <NumberField label="Height multiplier" value={s.exaggeration} min={0.1} max={30} step={0.1}
             onChange={exaggeration => onChange({ exaggeration })} />
         <p className="hint">Increase height to bring out gentle slopes.</p>
@@ -112,8 +124,8 @@ export default function TerrainStyles({ settings: s, onChange }: {
           <summary>Terrain detail & smoothing</summary>
           <NumberField label="Smoothing · samples" value={s.smoothing} min={0} max={5} step={0.1}
             onChange={smoothing => onChange({ smoothing })} hint="Softens the elevation data; zero keeps its original texture." />
-          <NumberField label="Base thickness · mm" value={s.base} min={3} max={20} step={0.5}
-            onChange={base => onChange({ base })} hint="A thicker base gives the tiles more strength." />
+          {s.map_format !== "jigsaw" && <NumberField label="Base thickness · mm" value={s.base} min={3} max={20} step={0.5}
+            onChange={base => onChange({ base })} hint="A thicker base gives the tiles more strength." />}
           <NumberField label="Grid samples · long edge" value={s.resolution} min={64} max={1024} step={1} integer
             onChange={resolution => onChange({ resolution })}
             hint="Use any whole number from 64 to 1,024. Fine uses 640; more samples take longer to build." />

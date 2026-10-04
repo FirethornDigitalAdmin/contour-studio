@@ -1,5 +1,12 @@
 # Verification record
 
+## Project workspace revision — 4 October 2026
+
+Local production and hosted builds pass, along with frontend validation/showcase checks and 24 focused Python format, Bambu packaging and desktop-startup tests. `tests/browser-project-workspace.cjs` verifies all project starters, grouped feature switches, precision controls, tile editing/growth, conversion and undo, multiple unfinished designs, reload, five-step migration and 900/390/320px layouts without page errors.
+
+`tests/browser-project-print.cjs` imports a small real-data design through the UI, generates watertight terrain and a separate frame, prepares/downloads a Bambu plate project, changes the frame, confirms stale launch is disabled, and regenerates successfully. Evidence is under `data/project-ux-review/`. This verifies local UI and file preparation; the new wall mounting mechanism has not been designed or physically tested, and installers have not been rebuilt for this interface revision.
+
+
 ## 3 October 2026 — creator profile photograph
 
 - Replaced the LG monogram with the user's supplied photograph, edited with the built-in image tool into a muted green monochrome head-and-shoulders portrait. The master and exact edit prompt are preserved in `brand/`; the shared public WebP is 1254 × 1254 and 173,762 bytes.
@@ -207,3 +214,9 @@ No physical print or wall-mounting trial has been performed. Print the fit coupo
 - The full Python suite passed: 258 tests. Flat engraved-road material layers now preserve the requested colour depth; uneven terrain retains its conservative core clearance.
 - Frontend validation and showcase integrity passed. Chrome and WebKit verified rectangle/outline drawing, corner and rotation edits, image upload/alignment/comparison, undo/redo, portable save/import, draft recovery and touch drawing.
 - Local and hosted production builds passed. The current source/local ZIPs include geographic custom-building outlines and printable generation. Native installer rebuilding is a separate release step.
+
+## Project examples from actual print models — 4 October 2026
+
+- Replaced the project-start and project-type SVG illustrations with Three.js renders of generated print-preview GLBs: a single Keswick map, the existing four-tile Bolton upon Dearne artwork, a sixteen-piece coloured Keswick jigsaw, and separate Keswick/Bolton map inserts in one holder. The modular preview switches when choosing different places. Saved designs use a neutral map icon rather than an unrelated example artwork.
+- Geometry is loaded directly from the exports without simplification or redrawing. Only lighting, camera, material appearance and separation of existing pieces change for presentation. `public/project-examples/manifest.json` records source files, SHA-256 hashes, mesh/triangle counts and source attribution. `scripts/render-project-examples.mjs` and its HTML scene reproduce the 960 × 700 WebP renders; optional command arguments supply replacement single/modular/jigsaw/places GLB paths in that order.
+- The complete project workspace browser check passes. Additional browser checks confirm all images load, the modular content preview switches, desktop/390/320 px layouts fit and no page errors occur. Render and UI screenshots are in `data/project-examples/`. These examples show generated models rather than photographs of physical prints.

@@ -71,7 +71,7 @@ const url = process.env.APP_URL || "http://127.0.0.1:8765";
    assert(await page.locator('.preview-inspection-tools button').evaluateAll(buttons => buttons.every(button => { const rect = button.getBoundingClientRect(); const panel = button.closest('.preview').getBoundingClientRect(); return rect.left >= panel.left && rect.right <= panel.right; })), `inspection controls fit ${size.width}px`);
   }
   // Layout keyboard and clipped rounded-edge rendering.
-  await page.getByRole('button',{name:/Place & size/,exact:true}).click();
+  await page.locator('.stepper').getByRole('button', { name: /Format/ }).click();
   await page.getByRole('button',{name:'Tile layout',exact:true}).click();
   await page.locator('.layout-diagram').waitFor();
   await page.getByRole('button',{name:'Artwork layout',exact:true}).click();

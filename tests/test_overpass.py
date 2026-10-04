@@ -205,3 +205,52 @@ def test_building_parts_are_requested_and_parsed(tmp_path, monkeypatch):
     assert len(features) == 1
     assert features[0][0] == 'building'
     assert features[0][1].area > 0
+
+
+def test_large_requests_stay_bounded_instead_of_using_four_by_four_cap(tmp_path, monkeypatch, clock):
+    settings = Settings(bounds=Bounds(west=0, east=.15, south=0, north=.15))
+    queries = []
+    def handler(request):
+        queries.append(parse_qs(request.content.decode())['data'][0])
+        return httpx.Response(200, json={'elements': []})
+    install_transport(monkeypatch, handler)
+    overpass.Downloader(tmp_path, {}, lambda *a: None).download(settings)
+    assert len(queries) == 36
+    import re
+    for query in queries:
+        south, west, north, east = map(float, re.search(r'\((-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)\)', query).groups())
+        assert (east-west)*111320 <= 3000
+        assert (north-south)*111320 <= 3000
+
+
+def test_huge_uncached_region_avoids_overloading_public_servers(tmp_path, monkeypatch):
+    settings = Settings(bounds=Bounds(west=0, east=1, south=0, north=1))
+    def handler(request):
+        pytest.fail('Huge regions must not send oversized map queries')
+    install_transport(monkeypatch, handler)
+    with pytest.raises(overpass.DownloadBudgetExceeded, match='too many'):
+        overpass.Downloader(tmp_path, {}, lambda *a: None).download(settings)
+
+
+def test_large_area_cache_is_reused_even_above_section_limit(tmp_path, monkeypatch):
+    settings = Settings(bounds=Bounds(west=0,east=1,south=0,north=1))
+    downloader = overpass.Downloader(tmp_path, {}, lambda *a:None)
+    downloader.save(legacy_key(settings), {'elements':[WAY], '_contour_fetched_at':overpass.time.time()})
+    def handler(request):
+        pytest.fail('Complete saved data should avoid network requests')
+    install_transport(monkeypatch,handler)
+    assert downloader.download(settings)['elements'] == [WAY]
+
+
+def test_large_area_retry_deadline_is_bounded(tmp_path, monkeypatch, clock):
+    calls=[]
+    def handler(request):
+        calls.append(request)
+        clock.now += 40
+        return httpx.Response(504)
+    install_transport(monkeypatch,handler)
+    downloader=overpass.Downloader(tmp_path, {}, lambda *a:None, budget_seconds=90)
+    with pytest.raises(overpass.OverpassUnavailable):
+        downloader.download(SMALL)
+    assert len(calls) <= 3
+    assert not list(tmp_path.glob('*.json'))

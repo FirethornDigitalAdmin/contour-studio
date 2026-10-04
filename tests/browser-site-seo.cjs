@@ -62,10 +62,10 @@ const fs = require('node:fs');
       await page.screenshot({ path: `data/site-seo/home-${width}.png`, fullPage: true });
     }
     await page.getByRole('link', { name: 'Open the free web designer', exact: true }).click();
-    await page.getByRole('button', { name: 'Make it yours', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Choose location', exact: true }).waitFor();
     assert.equal(await page.title(), 'Map Art Designer | Contour Studio');
     await page.goto(`${origin}/#workspace`);
-    await page.getByRole('button', { name: 'Make it yours', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Choose location', exact: true }).waitFor();
     await page.goto(origin);
     await page.locator('.download-site').waitFor();
     assert.equal(await page.title(), 'Contour Studio | Free 3D-Printable Map Art');

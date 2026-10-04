@@ -10,7 +10,17 @@ export type LocationMarker = {
 };
 export type CustomBuilding = { id: string; label: string; height: number; points: [number, number][] };
 export type ReferenceImage = { data: string; bounds: Bounds; x: number; y: number; width: number; aspect: number; rotation: number; opacity: number };
+export type Trail = { id: string; name: string; points: [number,number][]; style: "raised" | "engraved"; width: number; height: number };
+export type MapTile = { id: string; name: string; bounds: Bounds; markers: LocationMarker[]; trails: Trail[]; custom_buildings?: CustomBuilding[]; reference_image?: ReferenceImage | null };
 export type Settings = {
+  project_type?: "single" | "modular" | "jigsaw";
+  map_format: "artwork" | "mini_tiles" | "hexagons" | "jigsaw";
+  tile_size: number; tile_gap: number; collection_columns: number; collection_rows: number;
+  map_tiles: MapTile[]; active_tile: number;
+  mount_mode: "seat" | "magnets"; magnet_diameter: number; magnet_depth: number; magnet_clearance: number;
+  puzzle_style?: "classic" | "rounded"; puzzle_seed?: number;
+  puzzle_columns: number; puzzle_rows: number; puzzle_clearance: number; puzzle_relief: number;
+  trails: Trail[];
   custom_buildings?: CustomBuilding[];
   reference_image?: ReferenceImage | null;
   name: string;
@@ -26,6 +36,7 @@ export type Settings = {
   rows: number;
   base: number;
   exaggeration: number;
+  land_variation: number;
   smoothing: number;
   terrain_style: "smooth" | "terraced" | "sculpted" | "faceted";
   contour_height: number;
@@ -36,6 +47,8 @@ export type Settings = {
   tolerance: number;
   labels: boolean;
   frame_mode: "integrated" | "separate" | "none";
+  frame_contour: "flat" | "minimum" | "follow";
+  frame_clearance: number;
   frame_width: number;
   frame_depth: number;
   frame_height: number;
@@ -72,6 +85,16 @@ export type Settings = {
   colour_buildings: string;
   colour_frame: string;
   colour_markers: string;
+  railways: boolean;
+  railway_style: "bed" | "tracks";
+  railway_width: number;
+  railway_height: number;
+  road_hierarchy: boolean;
+  urban_spaces: boolean;
+  supported_crossings: boolean;
+  bridge_openings: boolean;
+  preserve_building_gaps: boolean;
+  building_type_heights: boolean;
   buildings: boolean;
   building_source: "combined" | "osm";
   building_height: number;
@@ -119,6 +142,8 @@ export type Model = {
     colour_method?: string | null;
     warnings: string[];
     elevation_m: number[];
+    land_height_mm?: number[];
+    frame_height_mm?: number[] | null;
     features: Record<string, number>;
     joints: unknown[];
     grid_spacing_mm: number[];
@@ -137,6 +162,7 @@ export type Model = {
     elevation: { provider: string; url: string };
     vectors: {
       provider: string; url: string;
+      tree_canopy?: { provider: string; url: string; status: string; attribution: string; features: number };
       buildings?: { added_buildings: number; osm_buildings: number; release: string; url: string };
     };
   };

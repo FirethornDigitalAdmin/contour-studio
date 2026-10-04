@@ -19,9 +19,9 @@ from shapely.geometry import LineString, Polygon, box
 from shapely.errors import GEOSException
 from shapely.ops import polygonize, transform, unary_union
 
-from .overpass import Downloader
+from .overpass import Downloader, OverpassUnavailable
 from . import buildings
-from .world import longitude_span, unwrap, rectangles
+from .world import longitude_span, unwrap, rectangles, selection_area_km2, MAX_BUILDING_AREA_KM2
 
 from .paths import RESOURCE_ROOT as ROOT, DATA_ROOT
 CACHE = DATA_ROOT / 'cache'
@@ -160,9 +160,26 @@ class Geography:
 
     def vectors(self, progress):
         s=self.settings
-        if s.roads=='none' and not s.water and not s.buildings and not s.landmarks and not (s.forests or s.fields or s.multicolour):
-            return [], {'provider':'OpenStreetMap','elements':0,'disabled':True}
-        raw=Downloader(CACHE,HEADERS,progress).download(s)
+        large_area = selection_area_km2(s.bounds) > MAX_BUILDING_AREA_KM2
+        if large_area:
+            s = s.model_copy(update={'buildings': False})
+        detail_metadata = {'building_detail_omitted': large_area, 'building_area_limit_km2': MAX_BUILDING_AREA_KM2}
+        if not s.railways and not s.urban_spaces and s.roads=='none' and not s.water and not s.buildings and not s.landmarks and not (s.forests or s.fields or s.multicolour):
+            return [], {'provider':'OpenStreetMap','elements':0,'disabled':True, **detail_metadata}
+        try:
+            raw=Downloader(CACHE,HEADERS,progress,budget_seconds=90 if large_area else None).download(s)
+        except OverpassUnavailable as exc:
+            if not large_area:
+                raise
+            # Elevation has already been acquired independently. Do not discard
+            # it or present an incomplete subset of vectors as complete coverage.
+            warning = ('Large-area terrain-only model: mapped roads, water, land cover and landmarks '
+                       'could not be loaded and are omitted. Real elevation is retained. '
+                       'Select a smaller area for mapped detail, or generate again to reuse saved sections. '
+                       f'Reason: {exc}')
+            progress(31, 'Continuing with real terrain; mapped landscape detail unavailable')
+            return [], {'provider':'OpenStreetMap','elements':0,'disabled':True,
+                        'terrain_only_fallback':True, 'warning':warning, **detail_metadata}
         clip=box(self.inset,self.inset,s.width-self.inset,s.height-self.inset)
         features=[]
         skipped=0
@@ -170,8 +187,16 @@ class Geography:
             try:
                 tags={**(el.get('tags') or {}), '_osm_id': f'{el["type"]}/{el["id"]}'}
                 kind='building' if any(tags.get(k) not in (None,'no') for k in ('building','building:part')) else 'water' if ('water' in tags or tags.get('natural')=='water' or 'waterway' in tags) else 'road' if 'highway' in tags else 'landmark'
+                if kind=='building' and large_area:
+                    continue
                 if kind=='landmark':
-                    if tags.get('landuse')=='forest' or tags.get('natural')=='wood': kind='forest'
+                    from .infrastructure import GREEN_LEISURE, HARD_LANDUSE
+                    if 'railway' in tags: kind='railway'
+                    elif tags.get('leisure') in GREEN_LEISURE or tags.get('landuse')=='recreation_ground': kind='park'
+                    elif tags.get('landuse') in HARD_LANDUSE or tags.get('amenity')=='parking': kind='hardscape'
+                if kind=='landmark':
+                    if tags.get('natural') in ('tree','tree_row','tree_group'): kind={'tree':'tree','tree_row':'tree_row','tree_group':'tree_canopy'}[tags['natural']]
+                    elif tags.get('landuse')=='forest' or tags.get('natural')=='wood': kind='forest'
                     elif tags.get('landuse')=='farmland': kind='field'
                     elif tags.get('landuse') in ('meadow','grass') or tags.get('natural') in ('grassland','scrub'): kind='grass'
                 if el['type']=='relation':
@@ -182,21 +207,26 @@ class Geography:
                     geom=unary_union(list(polygonize(unary_union(outer))))
                     if inner: geom=geom.difference(unary_union(list(polygonize(unary_union(inner)))))
                 elif el['type']=='node':
+                    if kind=='tree_canopy':
+                        skipped+=1
+                        continue  # A group point does not specify a canopy boundary.
                     from shapely.geometry import Point
-                    geom=Point(*self.point(el['lon'],el['lat'])).buffer(1.4)
+                    geom=Point(*self.point(el['lon'],el['lat']))
+                    if kind!='tree': geom=geom.buffer(1.4)
                 else:
                     pts=[self.point(p['lon'],p['lat']) for p in el.get('geometry',[]) if p]
                     if len(pts)<2: continue
                     closed=len(pts)>3 and pts[0]==pts[-1]
-                    geom=Polygon(pts).buffer(0) if closed and kind!='road' else LineString(pts)
+                    polygon=closed and (kind not in ('road','railway','tree_row') or tags.get('railway')=='platform')
+                    geom=Polygon(pts).buffer(0) if polygon else LineString(pts)
                 geom=geom.intersection(clip)
-                if kind in ('forest','field','grass'):
+                if kind in ('forest','field','grass','park','hardscape','tree_canopy'):
                     geom=buildings.polygonal(geom)
                 if not geom.is_empty: features.append((kind,geom,tags))
             except (ValueError,KeyError,TypeError,OverflowError,GEOSException):
                 skipped+=1
         metadata={'provider':'OpenStreetMap contributors','license':'ODbL 1.0',
-                  'url':'https://www.openstreetmap.org/copyright','elements':len(features),'skipped':skipped}
+                  'url':'https://www.openstreetmap.org/copyright','elements':len(features),'skipped':skipped, **detail_metadata}
         if s.buildings and s.building_source=='combined':
             b=s.bounds
             downloads=[buildings.download(rect,CACHE,progress) for rect in rectangles(b.west,b.south,b.east,b.north)]
@@ -210,4 +240,10 @@ class Geography:
                         f'({coverage["added_buildings"]:,} additional outlines)')
         if s.buildings:
             features=buildings.detailed_parts(features)
+        if s.forests:
+            from . import trees
+            additional,coverage=trees.download(self,fetch,progress)
+            features.extend(additional)
+            metadata['tree_canopy']=coverage
+            metadata['elements']=len(features)
         return features,metadata

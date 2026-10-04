@@ -22,7 +22,7 @@ from .geodata import Geography
 
 MAX_TREES = 1200
 MAX_FIELD_STRIPS = 800
-GEOMETRY_REVISION = 'map-formats-v13'
+GEOMETRY_REVISION = 'map-formats-v14'
 FRAME_LIP_WIDTH = 2.0
 FRAME_LIP_HEIGHT = 2.0
 
@@ -1099,7 +1099,10 @@ def generate_solids(s, progress, data_override=None):
     from shapely.geometry import LineString
     for trail in s.trails:
         line=LineString([geo.point(lon,lat) for lon,lat in trail.points])
-        shape=line.buffer(max(trail.width,2*s.nozzle)/2,cap_style=1,join_style=1).intersection(map_clip)
+        # Projected coordinates vary slightly across native platforms. Use the
+        # same printable mask grid as roads before intersecting the terrain,
+        # keeping microscopic route-boundary slivers out of the Boolean mesh.
+        shape=printable_footprint(line.buffer(max(trail.width,2*s.nozzle)/2,cap_style=1,join_style=1)).intersection(map_clip)
         if shape.is_empty:
             warnings.append(f'Trail {trail.name}: outside this map; no route geometry added.')
             continue

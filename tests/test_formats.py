@@ -69,7 +69,7 @@ def test_routes_modify_surface_and_keep_volume():
     for style in ('raised','engraved'):
         t=Trail(id=style,name='Walk',points=points,style=style)
         parts,meta=generate_solids(s.model_copy(update={'trails':[t]}),quiet,fixture)
-        mesh=as_trimesh(parts[0]['solid'])
+        mesh=as_trimesh(parts[0]['solid'],ensure_stl=True)
         assert mesh.is_watertight and mesh.is_volume
         comparison=v if style=='raised' else generate_solids(s.model_copy(update={'base':s.base+t.height}),quiet,fixture)[0][0]['solid'].volume()
         assert (mesh.volume>comparison) if style=='raised' else (mesh.volume<comparison)

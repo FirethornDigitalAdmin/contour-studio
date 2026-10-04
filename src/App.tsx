@@ -320,7 +320,7 @@ export default function App() {
   const outsideMarkers = s.markers.some(m => !insideBounds(m.lon,m.lat,s.bounds));
 
   const geometryStale = !!model && (
-    model.model.geometry_revision !== "map-formats-v13" ||
+    model.model.geometry_revision !== "map-formats-v14" ||
     (model.settings.map_format === "artwork" && model.settings.frame_mode === "separate" && model.model.frame_fit?.assembly !== "chamfered-insert")
   );
   const stale = !!model && (

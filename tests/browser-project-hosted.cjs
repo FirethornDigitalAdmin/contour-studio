@@ -1,0 +1,44 @@
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const url = process.env.APP_URL || 'http://127.0.0.1:18872';
+(async () => {
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, acceptDownloads: true });
+    const errors = [], apiRequests = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url()); });
+    await page.goto(url);
+    await page.getByRole('link', { name: 'Download for Mac', exact: true }).waitFor();
+    assert.match(await page.getByRole('link', { name: 'Download for Mac', exact: true }).getAttribute('href'), /v1\.0\.0-rc\.6/);
+    assert.match(await page.locator('.site-install-note').innerText(), /v1\.0\.0-rc\.6/);
+    await page.goto(`${url}/#workspace`);
+    await page.getByRole('button', { name: 'New project', exact: true }).click();
+    await page.getByRole('button', { name: 'Single map', exact: true }).click();
+    await page.getByRole('button', { name: 'Create project', exact: true }).click();
+    await page.getByRole('heading', { name: 'Choose your place.', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Keswick', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Edit your artwork' }).getByRole('button', { name: 'Design', exact: true }).click();
+    await page.getByRole('heading', { name: 'Make it yours.', exact: true }).waitFor();
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: 'Projects home', exact: true }).click();
+    assert.equal(await page.locator('.library-project').count(), 1);
+    await page.getByRole('button', { name: 'Current project', exact: true }).click();
+    await page.getByRole('heading', { name: 'Make it yours.', exact: true }).waitFor();
+    await page.getByRole('navigation', { name: 'Edit your artwork' }).getByRole('button', { name: 'Print', exact: true }).click();
+    await page.getByRole('button', { name: 'Help', exact: true }).click();
+    await page.locator('#help-title').waitFor({ state: 'visible' });
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    assert.equal(await page.locator('.update-button').count(), 0);
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    fs.mkdirSync('data/project-ux-review', { recursive: true });
+    await page.screenshot({ path: 'data/project-ux-review/hosted-print-mobile.png', fullPage: true });
+    assert.deepEqual(errors, []);
+    assert.deepEqual(apiRequests, []);
+    console.log('PASS: rc.6 download links, hosted project creation, library, current-project return, Help, desktop-only settings and mobile layout without local API requests.');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

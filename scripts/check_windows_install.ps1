@@ -39,6 +39,20 @@ function Wait-Button($process, [string]$name) {
     throw "The native WebView2 interface did not render '$name' within 90 seconds."
 }
 
+function Activate-Button($button) {
+    $pattern = $null
+    if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+        ([System.Windows.Automation.InvokePattern]$pattern).Invoke()
+        return
+    }
+    # aria-pressed format choices expose TogglePattern in native WebView2.
+    if ($button.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+        ([System.Windows.Automation.TogglePattern]$pattern).Toggle()
+        return
+    }
+    throw "The button '$($button.Current.Name)' has no Invoke or Toggle action."
+}
+
 function Close-App($process) {
     if (-not $process.CloseMainWindow()) { throw 'The native window could not be closed.' }
     if (-not $process.WaitForExit(15000)) { throw 'The app kept running after its window closed.' }
@@ -57,11 +71,11 @@ try {
     $button = Wait-Button $app 'New project'
     $health = Invoke-RestMethod 'http://127.0.0.1:18767/api/health'
     if ($health.status -ne 'ok' -or $health.application -ne 'Contour Studio') { throw 'The installed local engine is unavailable.' }
-    ([System.Windows.Automation.InvokePattern]$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Activate-Button $button
     $typeButton = Wait-Button $app 'Single map'
-    ([System.Windows.Automation.InvokePattern]$typeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Activate-Button $typeButton
     $createButton = Wait-Button $app 'Create project'
-    ([System.Windows.Automation.InvokePattern]$createButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Activate-Button $createButton
     Wait-Button $app 'Design' | Out-Null
     $report.rendered = $true
 
@@ -77,7 +91,7 @@ try {
     Close-App $app
     $app = Start-Process -FilePath $executable -PassThru
     $resumeButton = Wait-Button $app 'Continue last project'
-    ([System.Windows.Automation.InvokePattern]$resumeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Activate-Button $resumeButton
     Wait-Button $app 'Design' | Out-Null
     $report.draftRestored = $true
     Close-App $app
@@ -97,7 +111,7 @@ try {
     python -c "from desktop.updater import WINDOWS_SCRIPT; from pathlib import Path; import sys; Path(sys.argv[1]).write_text(WINDOWS_SCRIPT)" $updateScript
     $app = Start-Process -FilePath $executable -PassThru
     $resumeButton = Wait-Button $app 'Continue last project'
-    ([System.Windows.Automation.InvokePattern]$resumeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Activate-Button $resumeButton
     Wait-Button $app 'Design' | Out-Null
     $updatePlan = Join-Path $updateTrial 'plan.json'
     @{ pid = $app.Id; target = $install; installer = $installer; folder = $updateTrial;
@@ -115,7 +129,7 @@ try {
     } while ($null -eq $app -and [DateTime]::UtcNow -lt $deadline)
     if ($null -eq $app) { throw 'The updater did not relaunch the installed app.' }
     $resumeButton = Wait-Button $app 'Continue last project'
-    ([System.Windows.Automation.InvokePattern]$resumeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    Activate-Button $resumeButton
     Wait-Button $app 'Design' | Out-Null
     $report.updateReplaced = $true
     Close-App $app

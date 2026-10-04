@@ -86,7 +86,7 @@
   "railway_height": 0.4,
   "road_hierarchy": false,
   "urban_spaces": false,
-  "supported_crossings": false,
+  "supported_crossings": true,
   "bridge_openings": true,
   "preserve_building_gaps": false,
   "building_type_heights": false,

@@ -38,3 +38,10 @@ export function saveDesign(design: SavedDesign): SavedDesign[] {
   localStorage.setItem(storageKey, JSON.stringify(designs));
   return designs;
 }
+
+export type DeletedProject = { id: string; name: string; deleted: string; designs: SavedDesign[]; token?: string; jobId?: string; filesOnly: boolean };
+export function readDeletedProjects(): DeletedProject[] {
+  try { const data = JSON.parse(localStorage.getItem('contour-studio.trash.v1') || '[]'); return Array.isArray(data) ? data.filter(item => item && typeof item.id === 'string' && Array.isArray(item.designs)) : []; } catch { return []; }
+}
+export function writeDesigns(designs: SavedDesign[]) { localStorage.setItem(storageKey, JSON.stringify(designs)); }
+export function writeDeletedProjects(items: DeletedProject[]) { localStorage.setItem('contour-studio.trash.v1', JSON.stringify(items)); }

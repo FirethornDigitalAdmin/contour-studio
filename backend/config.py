@@ -176,7 +176,7 @@ class Settings(BaseModel):
     railway_height: float = Field(0.4, ge=0.2, le=1.5)
     road_hierarchy: bool = False
     urban_spaces: bool = False
-    supported_crossings: bool = False
+    supported_crossings: bool = True
     bridge_openings: bool = True
     preserve_building_gaps: bool = False
     building_type_heights: bool = False

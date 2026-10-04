@@ -112,3 +112,7 @@
 .library-project { display:flex; flex-direction:column; min-width:0; gap:8px; }
 .library-project .recent-design { width:100%; flex:1; }
 .library-print { align-self:flex-start; display:flex; align-items:center; gap:7px; font-size:.8rem; padding:8px 12px; }
+
+.library-delete{display:flex;align-items:center;gap:.4rem;margin:.25rem .75rem .6rem;color:#8b3b2c;background:transparent;border:0;font-size:.85rem}.library-trash{margin-top:1.5rem;padding:1rem;border:1px solid #d9ded4;border-radius:12px}.library-trash summary{cursor:pointer}.library-trash>div{display:flex;gap:1rem;align-items:center;justify-content:space-between;padding:.6rem 0}.library-delete-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#172a2166;padding:1rem}.library-delete-dialog{max-width:560px;background:#fcfbf7;border-radius:16px;padding:1.5rem;box-shadow:0 20px 70px #172a2155}.library-delete-dialog .project-chooser-actions{flex-wrap:wrap}
+
+.library-delete-dialog{border:0;color:inherit}.library-delete-dialog::backdrop{background:#172a2166}

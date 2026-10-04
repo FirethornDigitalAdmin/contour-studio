@@ -41,7 +41,7 @@ export function LandscapeDetails({ settings: s, onChange }: { settings: Settings
     <p className="hint">Main roads are wider than residential streets and paths. Hierarchy widths are at least two nozzle widths.</p>
     <Toggle label="Parks & urban surfaces" checked={s.urban_spaces} onChange={(urban_spaces) => onChange({ urban_spaces })} />
     <p className="hint">Mapped parks and recreation areas use smooth green relief; parking, industrial and railway land use smooth road-coloured relief. Both rise 0.2 mm, stay clear of buildings and water, and omit strips narrower than two nozzle widths.</p>
-    <Toggle label="Supported crossings & hidden tunnels" checked={s.supported_crossings} onChange={(supported_crossings) => onChange({ supported_crossings })} />
+    <Toggle label="Bridges & hidden tunnels" checked={s.supported_crossings} onChange={(supported_crossings) => onChange({ supported_crossings })} />
     <p className="hint">Enable roads or railways to include mapped bridges. Underground routes are hidden.</p>
     {s.supported_crossings && <>
       <Toggle label="Simple bridge openings" checked={s.bridge_openings} onChange={(bridge_openings) => onChange({ bridge_openings })} />

@@ -198,9 +198,51 @@ def generate(s:Settings):
 
 def project_root(ident):
     root=(OUTPUT/ident).resolve()
-    if root.parent!=OUTPUT.resolve():
+    if root.parent!=OUTPUT.resolve() or ident.startswith('.') or '\\' in ident:
         raise HTTPException(400,'Invalid project ID.')
     return root
+
+
+def local_mutation(request):
+    origin = request.headers.get('origin')
+    if (origin and origin != str(request.base_url).rstrip('/')) or request.headers.get('sec-fetch-site') == 'cross-site':
+        raise HTTPException(403, 'Manage projects from this local workspace.')
+
+
+@app.post('/api/projects/{ident}/trash')
+def trash_project(ident: str, request: Request):
+    """Move a complete print package out of the library without destroying it."""
+    local_mutation(request)
+    root=project_root(ident)
+    with lock:
+        if jobs.get(ident,{}).get('status') in ('queued','running'):
+            raise HTTPException(409, 'Wait for this project to finish generating.')
+        if not root.is_dir(): raise HTTPException(404, 'Project not found.')
+        token=str(uuid.uuid4())
+        destination=OUTPUT/'.trash'/token
+        destination.mkdir(parents=True)
+        (destination/'record.json').write_text(json.dumps({'id':ident}),encoding='utf-8')
+        root.rename(destination/'project')
+        jobs.pop(ident,None)
+    return {'token':token}
+
+
+@app.post('/api/trash/{token}/restore')
+def restore_project(token: str, request: Request):
+    local_mutation(request)
+    try:
+        if str(uuid.UUID(token)) != token: raise ValueError()
+    except ValueError: raise HTTPException(400, 'Invalid trash ID.')
+    folder=OUTPUT/'.trash'/token
+    with lock:
+        if not (folder/'record.json').is_file(): raise HTTPException(404, 'Deleted project not found.')
+        ident=json.loads((folder/'record.json').read_text())['id']
+        root=project_root(ident)
+        if root.exists(): raise HTTPException(409, 'A project with this ID already exists.')
+        (folder/'project').rename(root)
+        (folder/'record.json').unlink()
+        folder.rmdir()
+    return {'id':ident}
 
 
 def completed_project(root):

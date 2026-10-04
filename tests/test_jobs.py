@@ -108,6 +108,40 @@ def test_restart_recovers_completed_settings_and_rejects_invalid_archive(client)
     assert client.get('/api/projects').json() == []
 
 
+def test_delete_and_restore_keep_the_entire_print_package(client):
+    root=server.OUTPUT/'saved'
+    save_project(root)
+    (root/'example.stl').write_bytes(b'original mesh')
+    before={p.name:p.read_bytes() for p in root.iterdir()}
+    deleted=client.post('/api/projects/saved/trash',json={})
+    assert deleted.status_code == 200
+    assert client.get('/api/projects').json() == []
+    assert client.get('/api/jobs/saved').status_code == 404
+    assert client.get('/api/files/saved/example.stl').status_code == 404
+    restored=client.post('/api/trash/'+deleted.json()['token']+'/restore',json={})
+    assert restored.status_code == 200
+    assert {p.name:p.read_bytes() for p in root.iterdir()} == before
+    assert client.get('/api/jobs/saved').json()['status'] == 'complete'
+
+
+def test_deletion_blocks_running_jobs_and_cross_site_requests(client):
+    root=server.OUTPUT/'running';save_project(root)
+    server.jobs['running']={'id':'running','status':'running'}
+    assert client.post('/api/projects/running/trash',json={}).status_code == 409
+    assert root.exists()
+    assert client.post('/api/projects/running/trash',json={},headers={'Origin':'https://example.org'}).status_code == 403
+    assert client.post('/api/projects/.trash/trash',json={}).status_code == 400
+    assert client.post('/api/trash/not-a-token/restore',json={}).status_code == 400
+
+
+def test_restore_never_overwrites_an_existing_project(client):
+    root=server.OUTPUT/'saved';save_project(root)
+    token=client.post('/api/projects/saved/trash',json={}).json()['token']
+    root.mkdir();(root/'new.txt').write_text('new project')
+    assert client.post('/api/trash/'+token+'/restore',json={}).status_code == 409
+    assert (root/'new.txt').read_text() == 'new project'
+
+
 def test_validation_normalizes_settings_and_reports_import_errors(client):
     response=client.post('/api/validate',json={'name':'  My artwork  '})
     assert response.status_code == 200

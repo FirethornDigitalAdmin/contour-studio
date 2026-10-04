@@ -49,7 +49,7 @@ import PrintPackage from "./PrintPackage";
 import WorkspaceBoundary from "./WorkspaceBoundary";
 import useDesignHistory from "./useDesignHistory";
 import ProjectStart, { ProjectChooser } from "./ProjectStart";
-import { configureProject, projectNames, projectType, readDesigns, saveDesign, type ProjectType, type WallContent, type SavedDesign } from "./projectWorkflow";
+import { configureProject, projectNames, projectType, readDesigns, saveDesign, type ProjectType, type WallContent, type SavedDesign, readDeletedProjects, writeDeletedProjects, writeDesigns, type DeletedProject } from "./projectWorkflow";
 import "./project-workspace.css";
 import { restoreDraft, sameDesign, validateDesign } from "./validation";
 import { selectionAreaKm2, MAX_BUILDING_AREA_KM2, validBounds, insideBounds, centreLongitude, placeBounds, artworkRatio, fitArtworkBounds } from "./world";
@@ -75,6 +75,7 @@ export default function App() {
   const [home, setHome] = useState(true);
   const [hasDraft, setHasDraft] = useState(false);
   const [designs, setDesigns] = useState(readDesigns);
+  const [deletedProjects, setDeletedProjects] = useState(readDeletedProjects);
   const designId = useRef<string>(crypto.randomUUID());
   const [chooserMode, setChooserMode] = useState<"new" | "change">("new");
   const [chooserSession, setChooserSession] = useState(0);
@@ -582,6 +583,51 @@ export default function App() {
       setError("Could not import settings: " + (e as Error).message);
     }
   }
+  async function deleteLibraryProject(id: string, generatedId?: string, filesOnly = false) {
+    const existing = readDesigns();
+    const affected = existing.filter(design => design.id === id || (generatedId && design.jobId === generatedId));
+    if (generatedId && !affected.length) {
+      const saved = await api<Job>("/jobs/" + encodeURIComponent(generatedId));
+      const savedSettings = restoreDraft(saved.settings || saved.result?.settings, defaultsRef.current!);
+      if (!savedSettings) throw new Error("Save or export this project's design before deleting its files.");
+      const design: SavedDesign = { id: "generated-" + generatedId, settings: savedSettings, jobId: generatedId, updated: new Date().toISOString(), step: MAKE_STEP, view: "3d", mapRatioLocked: true };
+      affected.push(design); existing.push(design);
+    }
+    const name = affected[0]?.settings.name || projects.find(project => project.id === generatedId)?.name || "Project";
+    const item: DeletedProject = { id: crypto.randomUUID(), name, deleted: new Date().toISOString(), designs: affected, jobId: generatedId, filesOnly };
+    // Persist recovery details before changing either storage location.
+    writeDeletedProjects([...deletedProjects, item]);
+    try {
+      if (generatedId) item.token = (await api<{ token: string }>(`/projects/${encodeURIComponent(generatedId)}/trash`, {})).token;
+    } catch (error) { writeDeletedProjects(deletedProjects); throw error; }
+    const next = filesOnly ? existing.map(design => affected.includes(design) ? { ...design, jobId: undefined } : design) : existing.filter(design => !affected.includes(design));
+    const trash = [...deletedProjects, item];
+    try { writeDeletedProjects(trash); writeDesigns(next); }
+    catch (error) {
+      if (item.token) await api(`/trash/${encodeURIComponent(item.token)}/restore`, {});
+      try { writeDeletedProjects(deletedProjects); } catch { /* Existing projects remain on disk. */ }
+      throw error;
+    }
+    setDesigns(next); setDeletedProjects(trash);
+    const currentAffected = affected.some(design => design.id === designId.current) || (!!generatedId && job?.id === generatedId);
+    if (currentAffected) {
+      setJob(null); setSelected(null);
+      if (!filesOnly) { setHasDraft(false); localStorage.removeItem("contour-studio.draft.v1"); designId.current = crypto.randomUUID(); }
+    }
+    await refreshProjects();
+  }
+  async function restoreLibraryProject(item: DeletedProject) {
+    if (item.token) await api(`/trash/${encodeURIComponent(item.token)}/restore`, {});
+    const existing = readDesigns();
+    const restored = item.designs.map(saved => item.filesOnly ? { ...(existing.find(design => design.id === saved.id) || saved), jobId: saved.jobId } : saved);
+    const next = [...restored, ...existing.filter(design => !item.designs.some(saved => saved.id === design.id))];
+    writeDesigns(next); setDesigns(next);
+    const trash = deletedProjects.filter(deleted => deleted.id !== item.id); writeDeletedProjects(trash); setDeletedProjects(trash);
+    if (item.filesOnly && item.jobId && hasDraft && item.designs.some(saved => saved.id === designId.current)) {
+      setJob(await api<Job>("/jobs/" + encodeURIComponent(item.jobId)));
+    }
+    await refreshProjects();
+  }
   async function refreshProjects() {
     setProjectsLoading(true);
     setProjectsError("");
@@ -641,7 +687,7 @@ export default function App() {
         {home && <span className="start-header-note">Your free map art studio</span>}
       </header>
       {hostedWorkspace && <div className="hosting-note"><Monitor size={15} /><span>Design here. Generate and print on your computer.</span><button onClick={() => helpDialog.current?.showModal()}>How it works <ArrowRight size={14} /></button></div>}
-      {home ? <ProjectStart designs={designs} projects={projects} loading={projectsLoading} error={projectsError} hasDraft={hasDraft} busy={!!busy || !!opening} onNew={() => showChooser("new")} onResume={() => setHome(false)} onOpenDesign={(design, print) => void openDesign(design, print)} onOpenProject={(id, print) => void openProject(id, print)} onRefresh={() => void refreshProjects()} onImport={() => importInput.current?.click()} /> : <>
+      {home ? <ProjectStart deletedProjects={deletedProjects} onDelete={deleteLibraryProject} onRestore={restoreLibraryProject} designs={designs} projects={projects} loading={projectsLoading} error={projectsError} hasDraft={hasDraft} busy={!!busy || !!opening} onNew={() => showChooser("new")} onResume={() => setHome(false)} onOpenDesign={(design, print) => void openDesign(design, print)} onOpenProject={(id, print) => void openProject(id, print)} onRefresh={() => void refreshProjects()} onImport={() => importInput.current?.click()} /> : <>
       <div className="workspace" id="workspace" data-step={active.name.toLowerCase()}>
         <aside
           className="sidebar"

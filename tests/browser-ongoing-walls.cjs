@@ -4,13 +4,15 @@ const assert=require('node:assert/strict');
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try {
   for(const journey of ['Continuous tiled map','Collection of places'])for(const shape of ['Square','Hexagonal']) {
-   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+   const page=await browser.newPage({viewport:{width:1440,height:650}}),errors=[];
    page.on('pageerror',e=>errors.push(e.message));
    await page.goto(process.env.APP_URL||'http://127.0.0.1:18873');
    await page.getByRole('button',{name:'New project',exact:true}).click();
    await page.getByRole('button',{name:journey,exact:true}).click();
    await page.getByRole('group',{name:'Tile shape',exact:true}).getByRole('button',{name:shape,exact:true}).click();
-   await page.getByRole('button',{name:'Create project',exact:true}).click();
+   const action=page.getByRole('button',{name:'Create project',exact:true});
+   const bounds=await action.boundingBox();assert(bounds&&bounds.y>=0&&bounds.y+bounds.height<=650,'Create project must remain visible on short native windows');
+   await action.click();
    await page.getByRole('button',{name:'Edinburgh',exact:true}).click();
    await page.getByRole('button',{name:'Artwork layout',exact:true}).click();
    await page.getByRole('button',{name:'Add tile at row 1, column 2',exact:true}).click();

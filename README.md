@@ -183,3 +183,14 @@ Bambu Studio must be installed locally. Import the project as a project, select 
 `backend/bambu-defaults.json` contains the complete default configuration exported by Bambu Studio 02.08.02.61, expanded to the project's filament count to support its native importer.
 
 Project-choice examples use lightweight renders of real generated GLB exports. Their source hashes, geometry counts and map-data attribution are recorded in `public/project-examples/manifest.json`. To regenerate them, run `PLAYWRIGHT_MODULE=/path/to/playwright node scripts/render-project-examples.mjs` with the source files present, or pass four replacement GLB paths in single-map, continuous-wall, jigsaw, and collection order. The renderer changes presentation and piece positions only; it preserves the exported surfaces.
+
+
+### Ongoing tiled artwork
+
+Create **Continuous tiled map** for one geographic map across removable inserts, or **Collection of places** for a different location and personal details on each insert. Choose square or hexagonal tiles. Both start with one tile.
+
+In Place, use **Add a tile**, then select an adjoining **+** in Artwork layout. Only that tile is added. Reopen the saved project to keep extending it, up to 36 tiles. Continuous maps extend their geographic area at the original scale; place collections keep each existing location and its details. Project names are independent of tile names.
+
+Each new tile has an individual holder with rear joining-key sockets and a hanging keyhole. Print the included wall-fit pieces first. Keys align holders; fix every holder independently or to a rigid backing. Physical fit and wall hardware need a test print. Keep tile size and shape consistent with already printed parts.
+
+Projects → Delete offers print-files-only or whole-project deletion. Both are recoverable in the library. For an ongoing project, deletion includes its previous generated packages; Restore recovers them together.

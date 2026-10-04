@@ -768,7 +768,8 @@ def generate_solids(s, progress, data_override=None):
     progress(32,'Building the continuous terrain solid')
     smoothed=gaussian_filter(dem,s.smoothing) if s.smoothing else dem
     reserve=max(s.water_depth if s.water else 0,s.road_height if s.roads=='engraved' else 0, max((t.height for t in s.trails if t.style=='engraved'),default=0))
-    relief=(smoothed-smoothed.min())*geo.scale*s.exaggeration*s.land_variation
+    reference=float(smoothed.min()) if s.elevation_reference is None else s.elevation_reference
+    relief=np.maximum(0,smoothed-reference)*geo.scale*s.exaggeration*s.land_variation
     continuous_relief=relief
     xs,ys,relief=style_terrain(xs,ys,relief,s)
     ny,nx=relief.shape
@@ -1367,7 +1368,7 @@ def generate_solids(s, progress, data_override=None):
                   'colour_method':'surface-core-v1' if s.multicolour else None,
                   'custom_buildings':custom_count,'city_method':'mapped-parts-roofs-v1','dem':dem_meta,'osm':osm_meta,'features':count,'warnings':warnings,'joints':joints,
                   'land_height_mm':[float(z.min()),float(z.max())],'frame_height_mm':frame_range,
-                  'elevation_m':[float(dem.min()),float(dem.max())],'ground_dimensions_m':[geo.ground_width,geo.ground_height],
+                  'elevation_reference':reference,'elevation_m':[float(dem.min()),float(dem.max())],'ground_dimensions_m':[geo.ground_width,geo.ground_height],
                   'scale_mm_per_m':geo.scale,'grid':[nx,ny],'grid_spacing_mm':[float(xs[1]-xs[0]),float(ys[1]-ys[0])],
                   'terrain_method':'contour-bands' if s.terrain_style == 'terraced' else 'heightfield',
                   'columns':cols,'rows':rows,'whole_volume_mm3':whole.volume()}

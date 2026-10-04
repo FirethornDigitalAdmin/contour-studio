@@ -15,6 +15,8 @@ export type MapTile = { id: string; name: string; bounds: Bounds; markers: Locat
 export type Settings = {
   project_type?: "single" | "modular" | "jigsaw";
   map_format: "artwork" | "mini_tiles" | "hexagons" | "jigsaw";
+  project_id?: string; project_name?: string;
+  wall_mode?: "legacy" | "continuous" | "places"; wall_positions?: [number,number][]; wall_scale?: number | null; elevation_reference?: number | null;
   tile_size: number; tile_gap: number; collection_columns: number; collection_rows: number;
   map_tiles: MapTile[]; active_tile: number;
   mount_mode: "seat" | "magnets"; magnet_diameter: number; magnet_depth: number; magnet_clearance: number;

@@ -246,6 +246,8 @@ def assembly_svg(s,meta,parts):
                'Assembly.3mf and preview.glb show assembled positions; each STL has its own bed origin.']
         if s.map_format=='jigsaw':
             steps+=['Arrange Puzzle_row_column pieces using the assembled preview. The pieces have a 3 mm flat base and shallow map relief. Seat them in the tray without forcing the tabs.', 'Keep puzzle pieces removable. Glue only the holder plates to a rigid backing board.']
+        elif s.wall_mode!='legacy':
+            steps += [('One continuous geographic map spans these removable inserts.' if s.wall_mode=='continuous' else 'Each removable insert has its own place.'), 'Arrange Holder_row_column modules as shown. Push Wall_key pieces into the rear sockets across shared edges. Keep map inserts lift-out; do not glue the modules together.', 'Fix every holder independently using its rear keyhole (6 mm screw head, 3 mm shank) or attach holders to a rigid backing board. Rear keys align modules and do not support wall loads.', 'Reopen this saved project and select an adjacent + tile to extend it. Print the newly added Map and Holder files and their joining keys; existing modules stay compatible.', 'Use Wall_Fit_Left, Wall_Fit_Right and Wall_Fit_Key to check socket clearance before the full holders.']
         else:
             steps+=['Each Map_row_column tile has its own location. Mini tiles share a surround; hexagons have individual holders.', 'Glue holder plates to a rigid backing board; keep map inserts removable. Hexagon holders can be arranged freely.']
             if s.mount_mode=='magnets':steps+=[f'Use {s.magnet_diameter:g} × {s.magnet_depth:g} mm disc magnets, two per tile and two per matching holder. Pockets have {s.magnet_clearance:g} mm diameter/depth allowance.', 'Mark polarity before gluing magnets into the blind pockets. Let adhesive cure before inserting tiles. Do not glue the tiles to the holders.']
@@ -297,8 +299,10 @@ def assembly_svg(s,meta,parts):
 def build_project(s, folder:Path, progress, data_override=None):
     folder.mkdir(parents=True,exist_ok=True)
     (folder/'project.zip').unlink(missing_ok=True)
-    slug=re.sub(r'[^a-zA-Z0-9]+','-',s.name).strip('-') or 'Artwork'
+    slug=re.sub(r'[^a-zA-Z0-9]+','-',s.project_name or s.name).strip('-') or 'Artwork'
     parts,meta=generate_solids(s,progress,data_override)
+    if s.wall_mode=="continuous" and s.elevation_reference is None:
+        s=s.model_copy(update={"elevation_reference":meta.get("elevation_reference"),"wall_scale":meta.get("scale_mm_per_m")})
     if s.joints and meta['joints']:
         pocket=prism(affinity.translate(key_shape(s.tolerance),12,10),1.9,-0.1)
         coupon=prism(box(0,0,24,20),s.base)-pocket
@@ -407,7 +411,7 @@ def build_project(s, folder:Path, progress, data_override=None):
     (folder/'preview.glb').write_bytes(scene.export(file_type='glb'))
     export_3mf(assembly,folder/'Assembly.3mf')
     (folder/'assembly-guide.svg').write_text(assembly_svg(s,meta,results), encoding='utf-8')
-    info={'schema_version':1,'name':s.name,'units':'mm','created_at':datetime.now(timezone.utc).isoformat(),
+    info={'schema_version':1,'name':s.project_name or s.name,'units':'mm','created_at':datetime.now(timezone.utc).isoformat(),
           'settings':s.model_dump(),'layout':{'columns':meta['columns'],'rows':meta['rows']},'parts':results,
           'sources':{'elevation':meta.pop('dem'),'vectors':meta.pop('osm')},'model':meta,
           'notes':['STLs use local print-bed coordinates; assembly_origin_mm restores original placement.',

@@ -39,7 +39,7 @@ import { repository, releaseUrl } from "./distribution";
 import { api, hostedWorkspace, starterPlaces } from "./hosted";
 import { ApiError, layout, type Settings, type Job } from "./types";
 import { Field, NumberField, Section } from "./Controls";
-import { collection, activeMapSettings } from "./formats";
+import { collection, activeMapSettings, continuousWall, addWallTile } from "./formats";
 import { TilePicker } from "./FormatEditor";
 import PuzzleLayout from "./PuzzleLayout";
 import CollectionLayout from "./CollectionLayout";
@@ -49,7 +49,7 @@ import PrintPackage from "./PrintPackage";
 import WorkspaceBoundary from "./WorkspaceBoundary";
 import useDesignHistory from "./useDesignHistory";
 import ProjectStart, { ProjectChooser } from "./ProjectStart";
-import { configureProject, projectNames, projectType, readDesigns, saveDesign, type ProjectType, type WallContent, type SavedDesign, readDeletedProjects, writeDeletedProjects, writeDesigns, type DeletedProject } from "./projectWorkflow";
+import { configureProject, projectNames, projectLabel, projectType, readDesigns, saveDesign, type ProjectType, type WallContent, type SavedDesign, readDeletedProjects, writeDeletedProjects, writeDesigns, type DeletedProject } from "./projectWorkflow";
 import "./project-workspace.css";
 import { restoreDraft, sameDesign, validateDesign } from "./validation";
 import { selectionAreaKm2, MAX_BUILDING_AREA_KM2, validBounds, insideBounds, centreLongitude, placeBounds, artworkRatio, fitArtworkBounds } from "./world";
@@ -212,6 +212,7 @@ export default function App() {
         setConnectionError(false);
         setJob(next);
         if (next.status === "complete") {
+          if(next.result?.settings.wall_mode === "continuous")patch({elevation_reference:next.result.settings.elevation_reference,wall_scale:next.result.settings.wall_scale});
           setView("3d");
           setStep(MAKE_STEP);
           api<Project[]>("/projects")
@@ -411,12 +412,12 @@ export default function App() {
     catch { setDraftStatus("Storage is full. Export your design to keep a copy."); }
   }
   function showChooser(mode: "new" | "change") { setChooserMode(mode); setChooserSession(value => value + 1); chooserDialog.current?.showModal(); }
-  function chooseProjectType(type: ProjectType, content: WallContent) {
-    if (chooserMode === "change") { changeSettings(configureProject(s, type, content)); go(0); }
+  function chooseProjectType(type: ProjectType, content: WallContent, shape: 'mini_tiles' | 'hexagons') {
+    if (chooserMode === "change") { changeSettings(configureProject(s, type, content, false, shape)); go(0); }
     else if (defaultsRef.current) {
       rememberDesign();
       const defaults = { ...defaultsRef.current, printer_width: s.printer_width, printer_height: s.printer_height, printer_z: s.printer_z, nozzle: s.nozzle, margin: s.margin };
-      const next = { ...defaults, ...configureProject(defaults, type, content, true) };
+      const next = { ...defaults, ...configureProject(defaults, type, content, true, shape) };
       designId.current = crypto.randomUUID();
       resetSettings(next); setJob(null); setSelected(null); setError(""); setHasDraft(true); setMapRatioLocked(true); go(0);
     }
@@ -475,7 +476,7 @@ export default function App() {
     setPlacingMarker(null);
     setConnectionError(false);
     try {
-      const normalized = await api<Settings>("/validate", s);
+      const normalized = await api<Settings>("/validate", {...s,project_id:designId.current});
       setSettings(normalized);
       const created = await api<{ id: string }>("/generate", normalized);
       setJob({
@@ -593,7 +594,7 @@ export default function App() {
       const design: SavedDesign = { id: "generated-" + generatedId, settings: savedSettings, jobId: generatedId, updated: new Date().toISOString(), step: MAKE_STEP, view: "3d", mapRatioLocked: true };
       affected.push(design); existing.push(design);
     }
-    const name = affected[0]?.settings.name || projects.find(project => project.id === generatedId)?.name || "Project";
+    const name = affected[0]?.settings.project_name || affected[0]?.settings.name || projects.find(project => project.id === generatedId)?.name || "Project";
     const item: DeletedProject = { id: crypto.randomUUID(), name, deleted: new Date().toISOString(), designs: affected, jobId: generatedId, filesOnly };
     // Persist recovery details before changing either storage location.
     writeDeletedProjects([...deletedProjects, item]);
@@ -696,7 +697,7 @@ export default function App() {
         >
           <div className="sidebar-title">
             <span className="eyebrow">
-              {projectNames[projectType(s)]} · {active.name}
+              {projectLabel(s)} · {active.name}
             </span>
             <h1 tabIndex={-1} ref={stepHeading}>
               {active.title}
@@ -706,6 +707,7 @@ export default function App() {
           {step === 0 && (
             <div className="place-panel">
               <TilePicker settings={s} onChange={changeSettings}/>
+              {collection(s)&&s.wall_mode&&s.wall_mode!=="legacy"&&<div className="wall-grow-actions"><button type="button" disabled={busy} onClick={()=>setView("layout")}><Plus size={16}/>Add a tile</button><p className="hint">Choose an adjoining + in the artwork layout. This project stays saved as you add tiles.</p></div>}
               <form onSubmit={search} className="location-block">
                 <label className="input-label" htmlFor="location-search">
                   Search for a place
@@ -792,7 +794,7 @@ export default function App() {
               {step < MAKE_STEP ? (
                 <>
                   {step === 1 && <><TilePicker settings={s} onChange={changeSettings}/><SettingsPanel section="style" settings={s} onChange={changeSettings} fits={fits} placing={null} onPlace={() => {}} /><SettingsPanel section="frame" settings={s} onChange={changeSettings} fits={fits} placing={null} onPlace={() => {}} /></>}
-                  {step === 0 && <Section open heading="Size & layout" icon={<Ruler size={18}/>} description={`${displaySize(s.width)} × ${displaySize(s.height)} mm · ${projectNames[projectType(s)]}`}>
+                  {step === 0 && <Section open heading="Size & layout" icon={<Ruler size={18}/>} description={`${displaySize(s.width)} × ${displaySize(s.height)} mm · ${projectLabel(s)}`}>
                     <SettingsPanel section="format" settings={s} onChange={changeSettings} fits={fits} placing={null} onPlace={() => {}} />
                   </Section>}
                   <SettingsPanel
@@ -1002,8 +1004,8 @@ export default function App() {
           <div className="project-heading">
             <div>
               <span className="eyebrow">YOUR ARTWORK</span>
-              <h2>{s.name}</h2>
-              <button className="project-type-link" disabled={busy} onClick={() => showChooser("change")}>{projectNames[projectType(s)]} · Change type <ChevronRight size={13}/></button>
+              <h2>{s.project_name||s.name}</h2>
+              <button className="project-type-link" disabled={busy} onClick={() => showChooser("change")}>{projectLabel(s)} · Change type <ChevronRight size={13}/></button>
               <div className="design-status"><BookmarkCheck size={13} /><span role="status">{draftStatus}</span></div>
             </div>
             <div className="workspace-actions">
@@ -1128,7 +1130,7 @@ export default function App() {
                   onCancelMarker={() => setPlacingMarker(null)}
                 />
               ) : view === "layout" ? (
-                collection(s) ? <CollectionLayout settings={s} onGrow={direction=>changeSettings(direction === "column" ? {collection_columns:s.collection_columns+1} : {collection_rows:s.collection_rows+1})} onTile={i=>{const t=s.map_tiles[i];patch({active_tile:i,name:t.name,bounds:t.bounds,markers:t.markers,trails:t.trails,custom_buildings:t.custom_buildings??[],reference_image:t.reference_image??null});go(0);}}/> : s.map_format==="jigsaw" ? <PuzzleLayout settings={s}/> : <LayoutView settings={s} fits={fits} />
+                collection(s) ? <CollectionLayout settings={s} onAdd={position=>{changeSettings(addWallTile(s,position));go(0);}} onGrow={direction=>changeSettings(direction === "column" ? {collection_columns:s.collection_columns+1} : {collection_rows:s.collection_rows+1})} onTile={i=>{if(continuousWall(s)){patch({active_tile:i});go(0);return;}const t=s.map_tiles[i];patch({active_tile:i,name:t.name,bounds:t.bounds,markers:t.markers,trails:t.trails,custom_buildings:t.custom_buildings??[],reference_image:t.reference_image??null});go(0);}}/> : s.map_format==="jigsaw" ? <PuzzleLayout settings={s}/> : <LayoutView settings={s} fits={fits} />
               ) : model && job ? (
                 <Preview
                   id={job.id}
@@ -1327,7 +1329,7 @@ export default function App() {
       <input ref={importInput} type="file" hidden accept="application/json,.json" onChange={event => { if (event.target.files?.[0]) void importSettings(event.target.files[0]); event.target.value = ""; }} />
       <dialog ref={chooserDialog} className="project-chooser-dialog" aria-labelledby="project-chooser-title" onClick={event => { if (event.target === event.currentTarget) chooserDialog.current?.close(); }}>
         <div className="panel-heading"><div><span className="eyebrow">{chooserMode === "new" ? "START SOMETHING PERSONAL" : "YOUR PROJECT, YOUR WAY"}</span><h2 id="project-chooser-title">{chooserMode === "new" ? "What would you like to make?" : "Change project type"}</h2></div><button aria-label="Close project chooser" onClick={() => chooserDialog.current?.close()}><X size={20}/></button></div>
-        <ProjectChooser key={chooserSession} initialContent={collection(s) ? "places" : "continuous"} current={chooserMode === "change" ? projectType(s) : undefined} onCancel={() => chooserDialog.current?.close()} onChoose={chooseProjectType}/>
+        <ProjectChooser key={chooserSession} initialContent={s.wall_mode === "continuous" ? "continuous" : collection(s) ? "places" : "continuous"} initialShape={s.map_format === "hexagons" ? "hexagons" : "mini_tiles"} current={chooserMode === "change" ? projectType(s) : undefined} onCancel={() => chooserDialog.current?.close()} onChoose={chooseProjectType}/>
       </dialog>
       <dialog ref={creatorDialog} className="help-dialog creator-dialog" aria-labelledby="creator-dialog-title" onClose={() => creatorCredit.current?.focus()} onClick={e => { if (e.target === e.currentTarget) creatorDialog.current?.close(); }}>
         <div className="panel-heading"><h2 id="creator-dialog-title">Meet the maker</h2><button aria-label="Close about Louis" onClick={() => creatorDialog.current?.close()}><X size={20} /></button></div>

@@ -18,16 +18,16 @@
   {
     "kind": "modular",
     "place": "Bolton upon Dearne",
-    "source": "/data/perimeter-separate-frame-final-verification/preview.glb",
+    "source": "/data/rc9-live-continuous/preview.glb",
     "ready": true,
-    "meshes": 28,
-    "triangles": 1360340,
+    "meshes": 4,
+    "triangles": 34016,
     "sizeMm": [
-      410,
-      16.400754928588896,
-      290
+      212,
+      18.20858955383303,
+      106
     ],
-    "sha256": "2f706586057020dbd1d3123c24bb78af4d7e2a6190f5c94d9f7e98b49ca5babd",
+    "sha256": "fcbdfc7e21e8fe063ba0adae321125f66171457040311c4ecad797e029e483dc",
     "image": "modular.webp",
     "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
   },
@@ -49,17 +49,17 @@
   },
   {
     "kind": "places",
-    "place": "Keswick & Bolton upon Dearne",
-    "source": "/data/projects/a5a13446-0fbc-4616-bf5a-7ff7ecbcc5fe/preview.glb",
+    "place": "Bolton upon Dearne & Keswick",
+    "source": "/data/rc9-live-places/preview.glb",
     "ready": true,
-    "meshes": 13,
-    "triangles": 1330728,
+    "meshes": 4,
+    "triangles": 144480,
     "sizeMm": [
-      226,
-      46.612239837646506,
-      120
+      187.1243495941162,
+      17.90018844604495,
+      138.90380859375
     ],
-    "sha256": "e8decf22c43b2fea0ea7fc2b6dea795cf859e35b04006d6d24be2ac930622748",
+    "sha256": "977e425abb4e68ec566e8a5aebf14ea8a60fae56238ed24b0252afd686b9d8ed",
     "image": "places.webp",
     "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
   }

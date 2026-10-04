@@ -6,16 +6,17 @@ from shapely import affinity
 
 def cells(s):
     edge, gap = s.tile_size, s.tile_gap
-    for row in range(s.collection_rows):
-        for col in range(s.collection_columns):
-            if s.map_format == 'hexagons':
-                cx=s.frame_width+edge/2+col*(edge*.75+gap)
-                cy=s.frame_width+edge*math.sqrt(3)/4+row*(edge*math.sqrt(3)/2+gap)+(col%2)*(edge*math.sqrt(3)/4+gap/2)
-                shape=Polygon([(cx+edge/2*math.cos(i*math.pi/3),cy+edge/2*math.sin(i*math.pi/3)) for i in range(6)])
-            else:
-                cx=s.frame_width+edge/2+col*(edge+gap);cy=s.frame_width+edge/2+row*(edge+gap)
-                shape=box(cx-edge/2,cy-edge/2,cx+edge/2,cy+edge/2)
-            yield row,col,shape
+    positions=s.wall_positions or [(r,c) for r in range(s.collection_rows) for c in range(s.collection_columns)]
+    for row,col in positions:
+        if s.map_format == 'hexagons':
+            pitch_x=edge*.75+(math.sqrt(3)/2*gap if s.wall_mode!='legacy' else gap)
+            cx=s.frame_width+edge/2+col*pitch_x
+            cy=s.frame_width+edge*math.sqrt(3)/4+row*(edge*math.sqrt(3)/2+gap)+(col%2)*(edge*math.sqrt(3)/4+gap/2)
+            shape=Polygon([(cx+edge/2*math.cos(i*math.pi/3),cy+edge/2*math.sin(i*math.pi/3)) for i in range(6)])
+        else:
+            cx=s.frame_width+edge/2+col*(edge+gap);cy=s.frame_width+edge/2+row*(edge+gap)
+            shape=box(cx-edge/2,cy-edge/2,cx+edge/2,cy+edge/2)
+        yield row,col,shape
 
 
 def collection_size(s):
@@ -154,16 +155,28 @@ def generate_format(s,progress,data_override=None):
         for r,c,p in test:parts.append(record(f'Puzzle_Fit_{c+1}','coupon',prism(p,3)))
         return parts,meta
     parts=[];metas=[]
-    footprints=list(cells(s));tray_height=max(s.frame_depth,s.magnet_depth+s.magnet_clearance+1.5) if s.mount_mode=='magnets' else s.frame_depth
+    footprints=list(cells(s));tray_height=max(s.frame_depth,4 if s.wall_mode!='legacy' else 3,s.magnet_depth+s.magnet_clearance+1.5 if s.mount_mode=='magnets' else 0)
+    continuous=s.wall_mode=='continuous'
+    shared=None
+    if continuous:
+        source=s.model_copy(update=dict(map_format='artwork',width=s.width-2*s.frame_width,height=s.height-2*s.frame_width,frame_mode='none',front_caption=False,joints=False,labels=False,layout='manual',columns=1,rows=1))
+        baseline,shared_meta=generate_solids(source,progress,data_override)
+        shared=next(p for p in baseline if p['kind']=='terrain')
+        shared={**shared,'solid':shared['solid'].translate((s.frame_width,s.frame_width,0)), 'material_regions':{k:v.translate((s.frame_width,s.frame_width,0)) for k,v in shared.get('material_regions',{}).items()}}
+
     for i,(r,c,shape) in enumerate(footprints):
         tile=s.map_tiles[i] if i<len(s.map_tiles) else None
-        bounds=tile.bounds if tile else s.bounds;name=tile.name if tile else s.name
+        bounds=tile.bounds if tile else s.bounds;name=s.name if continuous else tile.name if tile else s.name
         minx,miny,maxx,maxy=shape.bounds;w=maxx-minx;h=maxy-miny
         source=s.model_copy(update=dict(map_format='artwork',name=name,bounds=bounds,width=w,height=h,frame_mode='none',front_caption=False,joints=False,labels=False,layout='manual',columns=1,rows=1,markers=tile.markers if tile else s.markers,trails=tile.trails if tile else s.trails,custom_buildings=tile.custom_buildings if tile else s.custom_buildings,reference_image=None))
         def report(percent,message):progress(5+int((i+percent/100)*50/len(footprints)),f'Tile {i+1}/{len(footprints)} · {message}')
-        baseline,meta=generate_solids(source,report,data_override);metas.append(meta)
-        t=next(p for p in baseline if p['kind']=='terrain')
-        t={**t,'solid':t['solid'].translate((minx,miny,0)), 'material_regions':{k:v.translate((minx,miny,0)) for k,v in t.get('material_regions',{}).items()}}
+        if continuous:
+            t=shared;meta=shared_meta
+        else:
+            baseline,meta=generate_solids(source,report,data_override)
+            t=next(p for p in baseline if p['kind']=='terrain')
+            t={**t,'solid':t['solid'].translate((minx,miny,0)), 'material_regions':{k:v.translate((minx,miny,0)) for k,v in t.get('material_regions',{}).items()}}
+        metas.append(meta)
         p=clipped_record(t,shape.buffer(-s.tolerance/2,join_style=2),f'Map_{r+1}_{c+1}',r,c,s)
         if s.mount_mode=='magnets':
             holes=pockets(shape,s,-.01)
@@ -173,7 +186,9 @@ def generate_format(s,progress,data_override=None):
         p['assembly_offset_mm']=[0,0,tray_height] if s.frame_mode!='none' else [0,0,0]
         p['map_name']=name;parts.append(p)
     if s.frame_mode!='none':
-        if s.map_format=='hexagons':
+        if s.wall_mode!='legacy':
+            parts+=modular_holders(footprints,s,tray_height)
+        elif s.map_format=='hexagons':
             for r,c,shape in footprints:
                 outer=shape.buffer(s.tile_gap/2,join_style=2);inner=shape.buffer(s.tolerance/2,join_style=2)
                 holder=prism(outer,tray_height)+prism(outer.difference(inner),s.frame_height,tray_height)
@@ -193,10 +208,15 @@ def generate_format(s,progress,data_override=None):
     if s.mount_mode=='magnets':
         coupon=prism(box(0,0,25,20),s.magnet_depth+s.magnet_clearance+1.5)-prism(Point(12.5,10).buffer((s.magnet_diameter+s.magnet_clearance)/2,quad_segs=24),s.magnet_depth+s.magnet_clearance,-.01)
         parts.append(record('Magnet_Fit','coupon',coupon))
-    meta=dict(metas[0]);meta['features']={k:sum(m['features'].get(k,0) for m in metas) for k in set().union(*(m['features'] for m in metas))}
+    meta=dict(metas[0]);meta['features']=dict(metas[0]['features']) if continuous else {k:sum(m['features'].get(k,0) for m in metas) for k in set().union(*(m['features'] for m in metas))}
     meta['whole_volume_mm3']=sum(p['solid'].volume() for p in parts if p['kind']=='terrain')
     meta.update(columns=s.collection_columns,rows=s.collection_rows,joints=[],frame_fit=None,format=s.map_format,map_sources=[{'name':parts[i]['map_name'],'dem':m['dem'],'osm':m['osm']} for i,m in enumerate(metas)])
-    meta['warnings']=[f'{parts[i]["map_name"]}: {warning}' for i,m in enumerate(metas) for warning in m['warnings']]
+    meta['warnings']=list(metas[0]['warnings']) if continuous else [f'{parts[i]["map_name"]}: {warning}' for i,m in enumerate(metas) for warning in m['warnings']]
+    meta['wall_mode']=s.wall_mode
+    if s.wall_mode!='legacy':
+        meta['warnings'].append('Expandable wall: one removable insert and keyed holder per tile. Rear keys align adjacent holders; each holder must be fixed independently using its rear keyhole or to a rigid backing. Keys are not load-bearing hanging hardware. Test print the fit pieces before printing the wall.')
+    if continuous:
+        meta['warnings'].append('Continuous map: all tiles are cut from one geographic surface. Extension keeps the original geographic scale and terrain datum. Locations below that datum are flattened to the original base.')
     meta['warnings'].append(f'Collection: each tile uses its own geographic area. Holders have {s.tolerance:g} mm edge clearance. Fit-test pockets before printing; glue magnets into blind pockets with matching polarity. Magnets and adhesive are not supplied.' if s.mount_mode=='magnets' else 'Collection: removable map inserts sit in matching holders. Fit-test the edge clearance before printing the full collection.')
     return parts,meta
 
@@ -209,4 +229,46 @@ def split_holder(solid,s):
             shape=box(c*s.width/cols,r*s.height/rows,(c+1)*s.width/cols,(r+1)*s.height/rows)
             piece=solid^prism(shape,s.printer_z+100)
             if not piece.is_empty():result.append(record(f'Holder_Plate_{r+1}_{c+1}','frame',piece,r,c,{'frame':piece} if s.multicolour else None))
+    return result
+
+
+def modular_holders(footprints,s,tray_height):
+    """Independent standard modules; open rear key pockets keep additions reversible."""
+    from .geometry import prism, union, key_shape
+    result=[]
+    for r,c,shape in footprints:
+        outer=shape.buffer(s.tile_gap/2,join_style=2)
+        inner=shape.buffer(s.tolerance/2,join_style=2)
+        holder=prism(outer,tray_height)+prism(outer.difference(inner),s.frame_height,tray_height)
+        if s.mount_mode=='magnets':holder=holder-pockets(shape,s,tray_height-s.magnet_depth-s.magnet_clearance)
+        edges=list(outer.exterior.coords)
+        cx,cy=shape.centroid.coords[0]
+        sockets=[]
+        for a,b in zip(edges,edges[1:]):
+            x,y=(a[0]+b[0])/2,(a[1]+b[1])/2
+            angle=math.degrees(math.atan2(y-cy,x-cx))
+            socket=affinity.translate(affinity.rotate(key_shape(s.tolerance),angle,origin=(0,0)),x,y)
+            sockets.append(prism(socket,2.1,-.01))
+        holder=holder-union(sockets)
+        # A rear keyhole has an entry for a 6mm head and a narrower retaining throat.
+        x,y=cx,cy+s.tile_size*.12
+        entry=Point(x,y).buffer(3.5,quad_segs=24)
+        cavity=entry.union(Point(x,y+7).buffer(3.5,quad_segs=24)).convex_hull
+        throat=Point(x,y).buffer(1.8,quad_segs=24).union(Point(x,y+7).buffer(1.8,quad_segs=24)).convex_hull
+        holder=holder-prism(entry,2.8,-.01)-prism(cavity,1.8,1)-prism(throat,1.1,-.01)
+        result.append(record(f'Holder_{r+1}_{c+1}','frame',holder,r,c,{'frame':holder} if s.multicolour else None))
+    # Print keys separately, one for each adjoining edge. All holders have the same sockets.
+    outers=[shape.buffer(s.tile_gap/2,join_style=2) for _,_,shape in footprints]
+    joins=[]
+    for i,a in enumerate(outers):
+        for j,b in enumerate(outers[i+1:],i+1):
+            seam=a.boundary.intersection(b.boundary.buffer(.001))
+            if seam.length>5:
+                joins.append((i,j))
+    for i,(a,b) in enumerate(joins):result.append(record(f'Wall_key_{i+1}','key',prism(key_shape(),1.8)))
+    # Two short matching halves exercise the same socket and retaining geometry.
+    test=prism(box(-12,-9,12,9),4)-prism(key_shape(s.tolerance),2.1,-.01)
+    for name,region in [('Wall_Fit_Left',box(-12,-9,0,9)),('Wall_Fit_Right',box(0,-9,12,9))]:
+        result.append(record(name,'coupon',test^prism(region,5)))
+    result.append(record('Wall_Fit_Key','coupon',prism(key_shape(),1.8)))
     return result

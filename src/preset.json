@@ -111,5 +111,11 @@
   "puzzle_clearance": 0.25,
   "trails": [],
   "puzzle_relief": 0.6,
-  "project_type": "single"
+  "project_type": "single",
+  "wall_mode": "legacy",
+  "wall_positions": [],
+  "elevation_reference": null,
+  "wall_scale": null,
+  "project_name": "",
+  "project_id": ""
 }

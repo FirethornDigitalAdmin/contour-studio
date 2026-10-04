@@ -115,3 +115,26 @@ assert.equal(restoreDraft(defaults,puzzleDefaults).puzzle_style,'rounded','old d
 for(const change of [{puzzle_style:'broken'},{puzzle_seed:0},{puzzle_seed:10000},{puzzle_seed:1.5}])assert(validateDesign({...puzzleDefaults,...change}).length);
 for(const change of [{puzzle_style:'classic'},{puzzle_seed:2}])assert(!sameDesign(puzzleDefaults,{...puzzleDefaults,...change}),'pattern changes require regeneration');
 console.log('PASS: puzzle pattern validation, legacy defaults and print freshness.');
+
+const {configureProject}=load('projectWorkflow');
+const {resizeCollection,addWallTile,wallPositions,collectionCells}=load('formats');
+for(const wall_mode of ['continuous','places'])for(const map_format of ['mini_tiles','hexagons']) {
+ const baseline={...defaults,wall_mode:'legacy',wall_positions:[],elevation_reference:null,wall_scale:null};
+ const initial={...baseline,...configureProject(baseline,'modular',wall_mode,true,map_format)};
+ assert.equal(initial.map_tiles.length,1);assert.equal(initial.map_format,map_format);assert.equal(initial.wall_mode,wall_mode);
+ const fixed={...initial,elevation_reference:100,wall_scale:.01};
+ const original=structuredClone(fixed.map_tiles[0]);
+ const growing={...fixed,...resizeCollection(fixed,addWallTile(fixed,[0,1]))};
+ assert.equal(growing.map_tiles.length,2);assert.deepEqual(growing.map_tiles[0],original);
+ assert.deepEqual(wallPositions(growing),[[0,0],[0,1]]);
+ if(wall_mode==='continuous') {
+  assert.equal(growing.bounds.west,initial.bounds.west);assert.equal(growing.bounds.south,initial.bounds.south);
+  assert.equal(growing.elevation_reference,100);assert.equal(growing.wall_scale,.01);
+  const oldScale=longitudeSpan(initial.bounds)/(initial.width-2*initial.frame_width);
+  assert(Math.abs(longitudeSpan(growing.bounds)/(growing.width-2*growing.frame_width)-oldScale)<1e-10);
+ }
+ const sparse={...growing,...resizeCollection(growing,addWallTile(growing,[1,0]))};
+ assert.equal(sparse.map_tiles.length,3);assert.equal(collectionCells(sparse).length,3);
+ assert.deepEqual(sparse.map_tiles[0],original);
+}
+console.log('PASS: separate ongoing journeys, square/hex shapes, sparse one-tile additions preserve authored locations and continuous-map geographic scale/terrain reference.');

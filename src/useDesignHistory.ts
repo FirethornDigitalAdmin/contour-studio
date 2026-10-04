@@ -17,7 +17,7 @@ function reducer(state: State, action: Action): State {
   if (action.type === "patch" && !state.current) return state;
   const changes = action.type === "patch" ? resizeCollection(state.current!,action.values) : {};
   const current = action.type === "set" ? action.settings : { ...state.current!, ...changes };
-  if (action.type === "patch" && collection(current) && ["name","bounds","markers","trails","custom_buildings","reference_image"].some(key=>key in action.values)) {
+  if (action.type === "patch" && collection(current) && current.wall_mode !== "continuous" && ["name","bounds","markers","trails","custom_buildings","reference_image"].some(key=>key in action.values)) {
     current.map_tiles=current.map_tiles.map((tile,i)=>i===current.active_tile?{...tile,name:current.name,bounds:current.bounds,markers:current.markers,trails:current.trails,custom_buildings:current.custom_buildings??[],reference_image:current.reference_image??null}:tile);
   }
   if (JSON.stringify(current) === JSON.stringify(state.current)) return state;

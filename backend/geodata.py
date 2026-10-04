@@ -99,7 +99,7 @@ class Geography:
         factor = math.cos(math.radians((b.north+b.south)/2))
         self.ground_width = (self.x1-self.x0)*factor
         self.ground_height = (b.north-b.south)*111320 if self.polar else (self.y1-self.y0)*factor
-        self.scale = min(self.map_width/self.ground_width,self.map_height/self.ground_height)
+        self.scale = settings.wall_scale if settings.wall_mode=="continuous" and settings.wall_scale is not None else min(self.map_width/self.ground_width,self.map_height/self.ground_height)
 
     def latitude_y(self, lat):
         return math.radians(lat)*6378137 if self.polar else MERCATOR.transform(0,lat)[1]

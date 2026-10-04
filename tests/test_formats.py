@@ -19,7 +19,7 @@ def design(fmt,**updates):
     s=Settings().model_copy(update=data)
     if fmt in ('mini_tiles','hexagons'):
         s.width,s.height=collection_size(s)
-        s.map_tiles=[MapTile(id=str(i),name=f'Place {i}',bounds=s.bounds.model_copy(update={'west':s.bounds.west+i*.01,'east':s.bounds.east+i*.01})) for i in range(s.collection_columns*s.collection_rows)]
+        s.map_tiles=[MapTile(id=str(i),name=f'Place {i}',bounds=s.bounds.model_copy(update={'west':s.bounds.west+i*.01,'east':s.bounds.east+i*.01})) for i in range(len(s.wall_positions) if s.wall_positions else s.collection_columns*s.collection_rows)]
     return Settings.model_validate(s.model_dump())
 
 @pytest.mark.parametrize('fmt',['mini_tiles','hexagons','jigsaw'])
@@ -147,3 +147,38 @@ def test_classic_export_has_matching_fit_pieces(tmp_path,multicolour):
     for index in range(2):
         coupon=next(p for p in parts if p['id']==f'Puzzle_Fit_{index+1}')['solid']
         assert coupon.volume()==pytest.approx(shapes[index][2].area*3,rel=1e-6)
+
+@pytest.mark.parametrize('shape',['mini_tiles','hexagons'])
+@pytest.mark.parametrize('mode',['continuous','places'])
+def test_ongoing_wall_modules_and_recovery(tmp_path,shape,mode):
+    s=design(shape,wall_mode=mode,wall_positions=[(0,0),(0,1)],collection_columns=2,collection_rows=1,mount_mode='magnets',frame_depth=4)
+    calls=[]
+    def data(xs,ys,geo):
+        calls.append(geo.settings.bounds)
+        return fixture(xs,ys,geo)
+    info=build_project(s,tmp_path,quiet,data)
+    assert len(calls)==(1 if mode=='continuous' else 2)
+    holders=[p for p in info['parts'] if p['kind']=='frame']
+    assert len(holders)==2
+    assert all(p['watertight'] and p['components']==1 and p['flat_base'] for p in info['parts'])
+    assert any(p['id']=='Wall_key_1' for p in info['parts'])
+    assert {'Wall_Fit_Left','Wall_Fit_Right','Wall_Fit_Key'}<={p['id'] for p in info['parts']}
+    saved=Settings.model_validate_json((tmp_path/'settings.json').read_text())
+    assert saved.wall_positions==[(0,0),(0,1)]
+    if mode=='continuous':
+        assert saved.elevation_reference is not None and saved.wall_scale is not None
+    from shapely.geometry import Point
+    from backend.geometry import prism
+    parts,_=generate_solids(s,quiet,data)
+    holder=next(p for p in parts if p['kind']=='frame')['solid']
+    shape2=next(cells(s))[2];cx,cy=shape2.centroid.coords[0]
+    # The screw-head entry is recessed from the rear; the holder roof stays intact.
+    assert (holder^prism(Point(cx,cy+s.tile_size*.12).buffer(1),1,.1)).volume()<1e-6
+    assert (holder^prism(Point(cx,cy+s.tile_size*.12).buffer(1),.5,3)).volume()>1
+
+
+def test_sparse_wall_positions_and_invalid_duplicates():
+    s=design('mini_tiles',wall_mode='places',wall_positions=[(0,0),(1,1)],collection_rows=2,collection_columns=2)
+    assert len(list(cells(s)))==2
+    with pytest.raises(ValidationError,match='unique'):
+        design('mini_tiles',wall_mode='places',wall_positions=[(0,0),(0,0)])

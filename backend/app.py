@@ -67,6 +67,8 @@ def validate_settings(s:Settings):
 
 def validate_marker_positions(s):
     """Check the exact printable badges before any source data is requested."""
+    if s.map_format in ('mini_tiles','hexagons') and s.wall_mode=='continuous':
+        return validate_marker_positions(s.model_copy(update=dict(map_format='artwork',width=s.width-2*s.frame_width,height=s.height-2*s.frame_width,frame_mode='none')))
     if s.map_format in ('mini_tiles','hexagons'):
         import math
         for tile in s.map_tiles:
@@ -103,7 +105,8 @@ TRACING_CACHE = {}
 def mapped_trails(s:Settings):
     import math
     source=s.model_copy(update=dict(map_format='artwork',roads='raised',buildings=False,water=False,forests=False,fields=False,landmarks=False,multicolour=False,railways=False,urban_spaces=False,frame_mode='none'))
-    if s.map_format in ('mini_tiles','hexagons'):source=source.model_copy(update=dict(width=s.tile_size,height=s.tile_size*(math.sqrt(3)/2 if s.map_format=='hexagons' else 1)))
+    if s.map_format in ('mini_tiles','hexagons'):
+        source=source.model_copy(update=dict(width=s.width-2*s.frame_width,height=s.height-2*s.frame_width)) if s.wall_mode=='continuous' else source.model_copy(update=dict(width=s.tile_size,height=s.tile_size*(math.sqrt(3)/2 if s.map_format=='hexagons' else 1)))
     geo=Geography(source)
     try:features,metadata=geo.vectors(lambda *args:None)
     except Exception as exc:raise HTTPException(502,'Mapped paths could not be downloaded. Import a GPX route or draw on the map.') from exc
@@ -221,9 +224,24 @@ def trash_project(ident: str, request: Request):
         token=str(uuid.uuid4())
         destination=OUTPUT/'.trash'/token
         destination.mkdir(parents=True)
-        (destination/'record.json').write_text(json.dumps({'id':ident}),encoding='utf-8')
-        root.rename(destination/'project')
-        jobs.pop(ident,None)
+        info=completed_project(root)
+        project_id=(info or {}).get('settings',{}).get('project_id')
+        roots=[root]
+        if project_id:
+            roots += [p for p in OUTPUT.iterdir() if p!=root and p.is_dir() and not p.name.startswith('.') and (completed_project(p) or {}).get('settings',{}).get('project_id')==project_id]
+        if any(jobs.get(p.name,{}).get('status') in ('queued','running') for p in roots):
+            destination.rmdir()
+            raise HTTPException(409, 'Wait for this project to finish generating.')
+        (destination/'record.json').write_text(json.dumps({'id':ident,'ids':[p.name for p in roots]}),encoding='utf-8')
+        moved=[]
+        try:
+            for p in roots:
+                p.rename(destination/p.name);moved.append(p)
+        except Exception:
+            for p in reversed(moved):(destination/p.name).rename(p)
+            (destination/'record.json').unlink();destination.rmdir();raise
+        for p in roots:jobs.pop(p.name,None)
+
     return {'token':token}
 
 
@@ -236,10 +254,17 @@ def restore_project(token: str, request: Request):
     folder=OUTPUT/'.trash'/token
     with lock:
         if not (folder/'record.json').is_file(): raise HTTPException(404, 'Deleted project not found.')
-        ident=json.loads((folder/'record.json').read_text())['id']
-        root=project_root(ident)
-        if root.exists(): raise HTTPException(409, 'A project with this ID already exists.')
-        (folder/'project').rename(root)
+        record=json.loads((folder/'record.json').read_text());ident=record['id']
+        ids=record.get('ids',[ident]);roots=[project_root(i) for i in ids]
+        if any(root.exists() for root in roots):raise HTTPException(409, 'A project with this ID already exists.')
+        moved=[]
+        try:
+            for root in roots:
+                source=folder/root.name if 'ids' in record else folder/'project'
+                source.rename(root);moved.append(root)
+        except Exception:
+            for root in reversed(moved):root.rename(folder/root.name if 'ids' in record else folder/'project')
+            raise
         (folder/'record.json').unlink()
         folder.rmdir()
     return {'id':ident}
@@ -295,7 +320,7 @@ def projects():
         if info is None: continue
         settings=info.get('settings',{})
         result.append({'id':path.parent.name,'name':info['name'],'created_at':info['created_at'],'layout':info['layout'],
-                       'width':settings.get('width'),'height':settings.get('height'),
+                       'project_id':settings.get('project_id',''),'width':settings.get('width'),'height':settings.get('height'),
                        'frame_mode':settings.get('frame_mode'),'terrain_style':settings.get('terrain_style','smooth'),
                        'part_count':len(info.get('parts',[]))})
         if len(result)>=500: break

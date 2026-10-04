@@ -1,3 +1,4 @@
+import math
 from math import ceil
 from .world import longitude_span
 from typing import Literal
@@ -91,6 +92,12 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False, str_strip_whitespace=True)
     project_type: Literal['single','modular','jigsaw'] = 'single'
     map_format: Literal['artwork','mini_tiles','hexagons','jigsaw'] = 'artwork'
+    project_id: str = Field('',max_length=64)
+    project_name: str = Field('',max_length=64)
+    wall_mode: Literal['legacy','continuous','places'] = 'legacy'
+    wall_positions: list[tuple[int,int]] = Field(default_factory=list,max_length=36)
+    wall_scale: float | None = Field(None,gt=0,le=100)
+    elevation_reference: float | None = Field(None,ge=-12000,le=9000)
     tile_size: float = Field(80,ge=60,le=160)
     tile_gap: float = Field(6,ge=4,le=20)
     collection_columns: int = Field(2,ge=1,le=6)
@@ -209,11 +216,13 @@ class Settings(BaseModel):
             from .formats import collection_size
             width,height=collection_size(self)
             if abs(width-self.width)>.01 or abs(height-self.height)>.01:raise ValueError('Collection dimensions must match tile size, spacing and border.')
-            if len(self.map_tiles)!=self.collection_columns*self.collection_rows:raise ValueError('Assign a location to every collection tile.')
+            if self.wall_positions and (len(set(self.wall_positions)) != len(self.wall_positions) or any(not (0<=r<self.collection_rows and 0<=c<self.collection_columns) for r,c in self.wall_positions)):
+                raise ValueError('Wall tile positions must be unique and inside the layout.')
+            if len(self.map_tiles)!=(len(self.wall_positions) if self.wall_positions else self.collection_columns*self.collection_rows):raise ValueError('Assign a location to every collection tile.')
             if self.active_tile>=len(self.map_tiles):raise ValueError('Choose a valid active collection tile.')
             if len({t.id for t in self.map_tiles})!=len(self.map_tiles):raise ValueError('Map tile IDs must be unique.')
             if self.mount_mode=='magnets' and self.base<self.magnet_depth+self.magnet_clearance+1.2:raise ValueError('Increase base thickness to leave 1.2 mm above the magnet pocket.')
-            if self.map_format=='hexagons' and self.tile_size+self.tile_gap>min(self.printer_width,self.printer_height)-2*self.margin:raise ValueError('Each hexagon holder must fit the usable build plate.')
+            if (self.map_format=='hexagons' or self.wall_mode!='legacy') and self.tile_size+self.tile_gap*(2/math.sqrt(3) if self.map_format=='hexagons' and self.wall_mode!='legacy' else 1)>min(self.printer_width,self.printer_height)-2*self.margin:raise ValueError('Each hexagon holder must fit the usable build plate.')
         if self.map_format=='jigsaw':
             iw=self.width-(2*self.frame_width if self.frame_mode!='none' else 0);ih=self.height-(2*self.frame_width if self.frame_mode!='none' else 0)
             tw,th=iw/self.puzzle_columns,ih/self.puzzle_rows

@@ -1,4 +1,4 @@
-import { collection, collectionDimensions, activeMapSettings } from "./formats";
+import { collection, collectionDimensions, activeMapSettings, continuousWall, wallPositions } from "./formats";
 import { validCustomBuildings, validReferenceImage } from "./tracing";
 import { layout, type LocationMarker, type Settings } from "./types";
 
@@ -22,14 +22,14 @@ const limits: Partial<Record<keyof Settings, [number, number, boolean?]>> = {
   building_min_height: [0.2, 10], nozzle: [0.2, 1],
   marker_lon: [-180, 180], marker_lat: [-90, 90],
 };
-const choices: Partial<Record<keyof Settings, string[]>> = { puzzle_style:["classic","rounded"], map_format:["artwork","mini_tiles","hexagons","jigsaw"], mount_mode:["seat","magnets"], frame_contour: ["flat", "minimum", "follow"], railway_style: ["bed", "tracks"], layout: ["auto", "manual"], terrain_style: ["smooth", "terraced", "sculpted", "faceted"], frame_mode: ["integrated", "separate", "none"], roads: ["raised", "engraved", "none"], building_source: ["combined", "osm"], building_style: ["realistic", "uniform", "stepped"], small_buildings: ["enhance", "keep", "omit"], water_style: ["carved", "smooth"], forest_style: ["canopy", "trees"], tree_type: ["broadleaf", "conifer", "mixed"], forest_grouping: ["groves", "even"], field_style: ["flat", "furrows", "rounded"] };
+const choices: Partial<Record<keyof Settings, string[]>> = { wall_mode:["legacy","continuous","places"], puzzle_style:["classic","rounded"], map_format:["artwork","mini_tiles","hexagons","jigsaw"], mount_mode:["seat","magnets"], frame_contour: ["flat", "minimum", "follow"], railway_style: ["bed", "tracks"], layout: ["auto", "manual"], terrain_style: ["smooth", "terraced", "sculpted", "faceted"], frame_mode: ["integrated", "separate", "none"], roads: ["raised", "engraved", "none"], building_source: ["combined", "osm"], building_style: ["realistic", "uniform", "stepped"], small_buildings: ["enhance", "keep", "omit"], water_style: ["carved", "smooth"], forest_style: ["canopy", "trees"], tree_type: ["broadleaf", "conifer", "mixed"], forest_grouping: ["groves", "even"], field_style: ["flat", "furrows", "rounded"] };
 const colourKeys: (keyof Settings)[] = ["colour_ground", "colour_water", "colour_forest", "colour_fields", "colour_roads", "colour_buildings", "colour_frame", "colour_markers"];
 const validColour = (value: unknown) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 const heartY = Array.from({ length: 96 }, (_, i) => { const a = i * Math.PI * 2 / 96; return 13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a); });
 const heartHalfHeight = (Math.max(...heartY) - Math.min(...heartY)) / 64;
 
 export function markerFitsMap(marker: LocationMarker, settings: Settings): boolean {
-  const hex=settings.map_format==="hexagons";
+  const hex=settings.map_format==="hexagons" && !continuousWall(settings);
   settings=activeMapSettings(settings);
   const inset = settings.frame_mode === "none" ? 0 : settings.frame_width;
   const width = settings.width - 2 * inset, height = settings.height - 2 * inset;
@@ -58,15 +58,17 @@ export function restoreDraft(value: unknown, defaults: Settings): Settings | nul
   const draft = value as Record<string, unknown>;
   const next = { ...defaults, ...draft } as Settings;
   for (const [key, fallback] of Object.entries(defaults)) {
-    if (key === "bounds" || key === "markers" || key === "custom_buildings" || key === "reference_image" || key === "map_tiles" || key === "trails") continue;
+    if (key === "wall_positions" || key === "elevation_reference" || key === "wall_scale" || key === "bounds" || key === "markers" || key === "custom_buildings" || key === "reference_image" || key === "map_tiles" || key === "trails") continue;
     if (typeof next[key as keyof Settings] !== typeof fallback) return null;
     if (typeof fallback === "number" && !Number.isFinite(next[key as keyof Settings])) return null;
   }
+  if (next.elevation_reference != null && (typeof next.elevation_reference!=="number" || !Number.isFinite(next.elevation_reference)))return null;
+  if(next.wall_positions && (!Array.isArray(next.wall_positions)||next.wall_positions.some(p=>!Array.isArray(p)||p.length!==2||p.some(v=>!Number.isInteger(v)||v<0||v>5))))return null;
   if (!validTrails(next.trails ?? []) || !validMapTiles(next.map_tiles ?? [])) return null;
   if (!validCustomBuildings(next.custom_buildings ?? []) || !validReferenceImage(next.reference_image)) return null;
   if (!next.bounds || typeof next.bounds !== "object" || !["west", "south", "east", "north"].every((k) => typeof next.bounds[k as keyof typeof next.bounds] === "number" && Number.isFinite(next.bounds[k as keyof typeof next.bounds]))) return null;
   if (!Array.isArray(next.markers) || next.markers.length > 20 || next.markers.some((m) => !m || typeof m.id !== "string" || typeof m.label !== "string" || !["heart", "star", "pin"].includes(m.symbol) || ![m.lon, m.lat, m.size, m.rise].every((v) => typeof v === "number" && Number.isFinite(v)))) return null;
-  if (Object.entries(choices).some(([key, values]) => !(key === "puzzle_style" && next.puzzle_style === undefined) && !values.includes(String(next[key as keyof Settings])))) return null;
+  if (Object.entries(choices).some(([key, values]) => !(key === "wall_mode" && next.wall_mode === undefined) && !(key === "puzzle_style" && next.puzzle_style === undefined) && !values.includes(String(next[key as keyof Settings])))) return null;
   if (colourKeys.some((key) => !validColour(next[key]))) return null;
   return Object.fromEntries(Object.keys(defaults).map((key) => [key, next[key as keyof Settings]])) as Settings;
 }
@@ -75,11 +77,12 @@ export function validateDesign(s: Settings): string[] {
   const issues: string[] = [];
   if (s.project_type !== undefined && !["single", "modular", "jigsaw"].includes(s.project_type)) issues.push("Choose a valid project type.");
   if(!validTrails(s.trails))issues.push("Check trail names, coordinates and printable widths in Trails.");
+  if(s.wall_positions?.length && (new Set(s.wall_positions.map(p=>p.join(","))).size!==s.wall_positions.length || s.wall_positions.some(([r,c])=>!Number.isInteger(r)||!Number.isInteger(c)||r<0||c<0||r>=s.collection_rows||c>=s.collection_columns)))issues.push("Choose unique tile positions inside the wall layout.");
   if(!validMapTiles(s.map_tiles))issues.push("Check each collection tile location.");
   if(collection(s)) {
     const dimensions=collectionDimensions(s);
     if(Math.abs(dimensions.width-s.width)>.01||Math.abs(dimensions.height-s.height)>.01)issues.push("Check collection dimensions in Format.");
-    for (const [i,tile] of s.map_tiles.entries()) {
+    for (const [i,tile] of (continuousWall(s)?[]:s.map_tiles).entries()) {
       if(validBounds(tile.bounds)&&validTrails(tile.trails)) {
         const tileSettings={...activeMapSettings(s),map_format:"artwork" as const,map_tiles:[],trails:tile.trails,markers:tile.markers,name:tile.name,bounds:tile.bounds};
         const tileIssues=validateDesign(tileSettings);
@@ -87,9 +90,9 @@ export function validateDesign(s: Settings): string[] {
       }
     }
     if(s.active_tile>=s.map_tiles.length)issues.push("Choose a valid active collection tile in Location.");
-    if(s.map_tiles.length!==s.collection_columns*s.collection_rows)issues.push("Assign a location to every collection tile.");
+    if(s.map_tiles.length!==wallPositions(s).length)issues.push("Assign a location to every collection tile.");
     if(s.mount_mode==='magnets'&&s.base<s.magnet_depth+s.magnet_clearance+1.2)issues.push("Increase base thickness to leave 1.2 mm above the magnet pockets.");
-    if(s.map_format==='hexagons'&&s.tile_size+s.tile_gap>Math.min(s.printer_width,s.printer_height)-2*s.margin)issues.push("Each hexagon holder must fit your usable build plate.");
+    if((s.map_format==='hexagons'||(s.wall_mode&&s.wall_mode!=='legacy'))&&s.tile_size+s.tile_gap*(s.map_format==='hexagons'&&s.wall_mode!=='legacy'?2/Math.sqrt(3):1)>Math.min(s.printer_width,s.printer_height)-2*s.margin)issues.push("Each hexagon holder must fit your usable build plate.");
   }
   if(s.map_format==='jigsaw') {
     const border=s.frame_mode==='none'?0:2*s.frame_width;
@@ -102,6 +105,7 @@ export function validateDesign(s: Settings): string[] {
   if (colourKeys.some((key) => !validColour(s[key]))) issues.push("Choose a valid six-digit colour for each print material.");
   if (!s.name.trim() || s.name.length > 64) issues.push("Give your artwork a name of 1–64 characters.");
   for (const [key, values] of Object.entries(choices)) {
+    if (key === "wall_mode" && s.wall_mode === undefined) continue;
     if (key === "puzzle_style" && s.puzzle_style === undefined) continue;
     if (!values.includes(String(s[key as keyof Settings]))) issues.push(`Choose a valid ${key.replaceAll("_", " ")} option.`);
   }
@@ -151,7 +155,16 @@ export function sameDesign(a: Settings, b: Settings): boolean {
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, canonical(child)]));
     return value;
   };
-  const printable = (s: Settings) => { const { reference_image: _image, project_type: _type, ...rest } = s; return { ...rest, custom_buildings: s.custom_buildings ?? [], map_tiles:s.map_tiles.map(({reference_image:_tileImage,...tile})=>({...tile,custom_buildings:tile.custom_buildings??[]})) }; };
+  const printable = (s: Settings) => {
+    const { reference_image: _image, project_type: _type, project_name: _projectName, project_id: _projectId, ...rest } = s;
+    const result={...rest,custom_buildings:s.custom_buildings??[],map_tiles:s.map_tiles.map(({reference_image:_tileImage,...tile})=>({...tile,custom_buildings:tile.custom_buildings??[]}))};
+    if(collection(s)) {
+      const {active_tile:_active,...withoutSelection}=result;
+      if(!continuousWall(s)) {const {name:_name,bounds:_bounds,markers:_markers,trails:_trails,custom_buildings:_buildings,...geometry}=withoutSelection;return geometry;}
+      return withoutSelection;
+    }
+    return result;
+  };
   return JSON.stringify(canonical(printable(a))) === JSON.stringify(canonical(printable(b)));
 }
 

@@ -216,3 +216,30 @@ def test_valid_central_marker_can_validate_and_start_generation(client,monkeypat
     assert client.post('/api/validate',json=settings).json() == settings
     assert client.post('/api/generate',json=settings).status_code == 202
     assert called.wait(5)
+
+
+def test_delete_ongoing_project_includes_previous_print_packages(client):
+    for ident in ['first','second']:
+        root=server.OUTPUT/ident;info=save_project(root)
+        info['settings']['project_id']='ongoing-design'
+        (root/'model-info.json').write_text(json.dumps(info))
+    save_project(server.OUTPUT/'other')
+    assert all(p.get('project_id')=='ongoing-design' for p in client.get('/api/projects').json() if p['id']!='other')
+    token=client.post('/api/projects/second/trash',json={}).json()['token']
+    assert [p['id'] for p in client.get('/api/projects').json()]==['other']
+    # A conflicting previous package prevents restoring any package in the group.
+    (server.OUTPUT/'first').mkdir()
+    assert client.post('/api/trash/'+token+'/restore',json={}).status_code==409
+    assert not (server.OUTPUT/'second').exists()
+    (server.OUTPUT/'first').rmdir()
+    assert client.post('/api/trash/'+token+'/restore',json={}).status_code==200
+    assert {p['id'] for p in client.get('/api/projects').json()}=={'first','second','other'}
+
+
+def test_restore_rc8_deleted_package_is_backward_compatible(client):
+    import uuid
+    root=server.OUTPUT/'old';save_project(root)
+    token=str(uuid.uuid4());trash=server.OUTPUT/'.trash'/token;trash.mkdir(parents=True)
+    root.rename(trash/'project');(trash/'record.json').write_text(json.dumps({'id':'old'}))
+    assert client.post('/api/trash/'+token+'/restore',json={}).status_code==200
+    assert client.get('/api/jobs/old').status_code==200

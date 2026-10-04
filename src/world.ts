@@ -13,6 +13,7 @@ export function validBounds(b: Bounds) {
 export const insideBounds = (lon: number, lat: number, b: Bounds) => longitudeOffset(lon,b)>0 && longitudeOffset(lon,b)<longitudeSpan(b) && lat>b.south && lat<b.north;
 
 export function artworkRatio(s: Settings) {
+  if(s.wall_mode==='continuous'&&(s.map_format==='mini_tiles'||s.map_format==='hexagons'))return (s.width-2*s.frame_width)/(s.height-2*s.frame_width);
   if(s.map_format==='mini_tiles')return 1;
   if(s.map_format==='hexagons')return 2/Math.sqrt(3);
   const frame = s.frame_mode === 'none' ? 0 : s.frame_width;

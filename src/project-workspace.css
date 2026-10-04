@@ -29,7 +29,7 @@
 .project-chooser-dialog { width: min(880px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); color: var(--ink); box-shadow: 0 30px 100px #18221c40; overflow-y: auto; }
 .project-chooser-dialog::backdrop { background: #1c282a70; backdrop-filter: blur(5px); }
 .project-chooser-dialog h2 { font-size: clamp(1.2rem, 2.7vw, 1.7rem); margin-top: 8px; letter-spacing: -.04em; }
-.project-type-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 28px 0 22px; }
+.project-type-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 28px 0 22px; }
 .project-type-cards button { flex-direction: column; justify-content: flex-start; text-align: left; align-items: stretch; padding: 15px; border-radius: 12px; background: #f4f3ec; gap: 9px; }
 .project-type-cards button[aria-pressed=true] { background: #eaf0e5; border-color: var(--green); box-shadow: 0 0 0 1px var(--green); }
 .project-type-cards .project-model-caption { font-size: .62rem; }

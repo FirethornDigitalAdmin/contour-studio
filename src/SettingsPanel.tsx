@@ -258,7 +258,7 @@ export default function SettingsPanel({
   const border = s.frame_mode === "none" ? 0 : 2 * s.frame_width;
   const mapSize = `${(s.width - border).toFixed(1)} × ${(s.height - border).toFixed(1)} mm`;
   if (section === "location") return null;
-  if (section === "frame" && s.map_format!=="artwork") return (<FeatureGroup heading="Frame & caption" icon={<Frame size={18}/>} checked={s.frame_mode !== "none"} onChange={enabled => onChange({ frame_mode: enabled ? "separate" : "none", front_caption: false })} description={collection(s) ? "Removable inserts & supporting surround" : "Puzzle tray & surround"}>
+  if (section === "frame" && s.map_format!=="artwork") return (<FeatureGroup heading="Frame & caption" icon={<Frame size={18}/>} checked={s.frame_mode !== "none"} onChange={enabled => onChange({ frame_mode: enabled ? "separate" : "none", front_caption: false })} description={collection(s) ? "Removable inserts & expandable holders" : "Puzzle tray & surround"}>
     <MountEditor settings={s} onChange={onChange}/>
     <div className="control-block">
       {select("frame_mode","Frame",[["separate",s.map_format==='hexagons'?"Matching hexagon holders":"Supporting tray & surround"],["none","No frame / holders"]])}

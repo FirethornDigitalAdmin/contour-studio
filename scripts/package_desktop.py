@@ -4,9 +4,21 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+def detach_image(mount):
+    """Allow Spotlight/Finder to release the image before compression."""
+    command = ["hdiutil", "detach", str(mount)]
+    for attempt in range(5):
+        result = subprocess.run(command)
+        if result.returncode == 0:
+            return
+        if attempt == 4:
+            raise subprocess.CalledProcessError(result.returncode, command)
+        time.sleep(2)
 
 def main():
     if platform.system() != 'Darwin':
@@ -68,7 +80,7 @@ def main():
                     layout['Applications']['Iloc'] = (470, 130)
 
             finally:
-                subprocess.run(['hdiutil', 'detach', str(mount)], check=True)
+                detach_image(mount)
             subprocess.run(['hdiutil', 'convert', str(writable), '-ov', '-format', 'UDZO',
                             '-o', str(target)], check=True)
         finally:

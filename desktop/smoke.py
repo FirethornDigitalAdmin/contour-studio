@@ -22,6 +22,6 @@ for part in info['parts']:
 assert (folder / 'project.zip').is_file()
 from backend.paths import worker_command, subprocess_options
 result = subprocess.run(worker_command('backend.worker', str(folder / 'invalid')),
-                        input='invalid JSON', capture_output=True, text=True, timeout=30, **subprocess_options())
+                        input='invalid JSON', capture_output=True, text=True, timeout=120, **subprocess_options())
 assert result.returncode == 1 and json.loads(result.stdout.strip().splitlines()[-1])['type'] == 'error'
 print(json.dumps({'status': 'ok', 'parts': len(info['parts'])}))

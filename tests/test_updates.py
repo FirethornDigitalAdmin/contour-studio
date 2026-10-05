@@ -21,9 +21,10 @@ def test_release_selection_requires_published_platform_installer():
     name = 'Contour-Studio-Windows-x64-Setup.exe'
     assert updates.select_release([release(draft=True)], filename=name)['status'] == 'current'
     assert updates.select_release([release(filename='different.dmg')], filename=name)['status'] == 'current'
-    result = updates.select_release([release(), release('v1.0.0-rc.10')], filename=name)
+    result = updates.select_release([release(), release('v1.0.0-rc.10')], current='1.0.0-rc.9', filename=name)
     assert result['latest_version'] == '1.0.0-rc.10'
     assert result['download_url'].endswith(name)
+    assert updates.select_release([release('v1.0.0-rc.10')], current='1.0.0-rc.10', filename=name)['status'] == 'current'
 
 
 def test_untrusted_and_malformed_releases():

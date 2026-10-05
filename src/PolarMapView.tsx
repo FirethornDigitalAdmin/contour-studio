@@ -1,3 +1,4 @@
+import { shapePath } from "./artworkShapes";
 import { useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Minus, Plus, X } from 'lucide-react';
 import type { Bounds, Settings } from './types';
@@ -52,7 +53,7 @@ export default function PolarMapView({settings,editable=true,onBounds,placingMar
         move((e.clientX-drag.x)/r.width*longitudeSpan(drag.b),-(e.clientY-drag.y)/r.height*(drag.b.north-drag.b.south),drag.b);
       }} onPointerUp={()=>setDrag(null)} onPointerCancel={()=>setDrag(null)}>
       <svg viewBox="0 0 600 400" preserveAspectRatio="none" aria-hidden="true">
-        <rect x="1" y="1" width="598" height="398" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/>
+        <path d={shapePath(settings)} transform="scale(6 4)" fill="none" stroke="currentColor" vectorEffect="non-scaling-stroke" strokeWidth="2" fillRule="evenodd"/>
         {Array.from({length:Math.min(20,columns-1)},(_,i)=><path key={`c${i}`} d={`M ${(i+1)*600/columns} 0 V 400`} stroke="currentColor" opacity=".3"/>)}
         {Array.from({length:Math.min(20,rows-1)},(_,i)=><path key={`r${i}`} d={`M 0 ${(i+1)*400/rows} H 600`} stroke="currentColor" opacity=".3"/>)}
         {(settings.trails??[]).map(t=><polyline key={t.id} points={t.points.map(([lon,lat])=>`${longitudeOffset(lon,b)/span*600},${(b.north-lat)/height*400}`).join(' ')} stroke="#b3472e" strokeWidth="3" fill="none"/>)}

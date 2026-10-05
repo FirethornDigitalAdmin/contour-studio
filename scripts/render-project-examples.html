@@ -19,13 +19,15 @@ light.shadow.camera.right=light.shadow.camera.top=500;light.shadow.camera.far=15
 light.shadow.normalBias=.08;light.shadow.bias=-.00001;scene.add(light);
 const fill=new THREE.DirectionalLight('#e7f0ff',.5);fill.position.set(300,200,-200);scene.add(fill);
 const gltf=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(query.get('source'));
-const palette={ground:'#80A768',water:'#397CA7',forest:'#80A768',fields:'#E9DECA',roads:'#E9DECA',buildings:'#E9DECA',frame:'#2B4045',markers:'#2B4045'};
+const palette={ground:'#80A768',water:'#397CA7',forest:'#80A768',fields:'#E9DECA',roads:'#E9DECA',buildings:'#E9DECA',frame:'#2B4045',markers:query.get('markers')||'#2B4045'};
 let triangles=0,meshes=0;
 gltf.scene.traverse(child=>{
  if(!(child instanceof THREE.Mesh))return;
  const semantic=child.name.startsWith('MaterialVisual_')?child.name.split('_').pop():null;
  const frame=semantic==='frame'||child.name.startsWith('FrameVisual_')||child.name.startsWith('Frame_')||child.name.startsWith('Holder_');
- const colour=semantic?palette[semantic]:frame?palette.frame:'#ddd9c7';
+ // Printed wall hardware in the rear view: pucks in a pale filament, the spacing jig in an accent.
+ const hardware=child.name.startsWith('Puck_')?'#E9DECA':child.name.startsWith('Jig')?'#C9704A':null;
+ const colour=hardware??(semantic?palette[semantic]:frame?palette.frame:'#ddd9c7');
  if(!colour)throw new Error('Unrecognised material: '+child.name);
  child.material=new THREE.MeshStandardMaterial({color:colour,roughness:.88,metalness:0,flatShading:true});
  child.geometry.computeVertexNormals();child.castShadow=!semantic || semantic==='ground' || frame;child.receiveShadow=false;
@@ -38,8 +40,9 @@ gltf.scene.traverse(child=>{
  if(kind==='jigsaw'){
   const match=child.name.match(/Puzzle_(\d+)_(\d+)/);
   if(!match)return;
-  const row=Number(match[1]),col=Number(match[2]);child.position.x+=(col-2.5)*1.8;child.position.y+=(2.5-row)*1.8;
-  if(row===4&&col===4){child.position.x+=8;child.position.y-=8;child.position.z+=7;}
+  // Rows count from the south. Ease the pieces apart and lift the near corner piece out.
+  const row=Number(match[1]),col=Number(match[2]);child.position.x+=(col-2.5)*1.2;child.position.y+=(row-2.5)*1.2;
+  if(row===1&&col===4){child.position.x+=9;child.position.y-=9;child.position.z+=8;}
  }
 });
 const root=new THREE.Group();root.rotation.x=-Math.PI/2;root.add(gltf.scene);scene.add(root);

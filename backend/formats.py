@@ -34,8 +34,16 @@ def pockets(shape,s,bottom):
     return union([prism(Point(x,y).buffer((s.magnet_diameter+s.magnet_clearance)/2,quad_segs=24),s.magnet_depth+s.magnet_clearance,bottom) for x,y in magnet_centres(shape)])
 
 
-def puzzle_shapes(width,height,columns,rows,clearance,tab_ratio=.18,style="rounded",seed=1):
-    """A shared circular tab crosses each seam; its neighbour gets the same socket."""
+ROUND_TAB = .14
+ROUND_SHIFT = .8
+
+
+def puzzle_shapes(width,height,columns,rows,clearance,tab_ratio=ROUND_TAB,style="rounded",seed=1):
+    """Shared boundaries, so each knob has exactly one matching socket.
+
+    Round knobs sit 0.8 radii beyond the seam: the neck is 60% of the head, so
+    neighbouring pieces cannot slide apart in the plane of the puzzle.
+    """
     if style == "classic":
         return classic_puzzle_shapes(width,height,columns,rows,clearance,seed)
     tw,th=width/columns,height/rows
@@ -45,18 +53,23 @@ def puzzle_shapes(width,height,columns,rows,clearance,tab_ratio=.18,style="round
         for c in range(columns-1):
             x=(c+1)*tw;y=(r+.5)*th
             a,b=((r,c),(r,c+1)) if (r+c)%2==0 else ((r,c+1),(r,c))
-            # Offset into the receiving piece leaves a broad neck at the seam.
-            shift=radius*.35 if a==(r,c) else -radius*.35
+            shift=radius*ROUND_SHIFT if a==(r,c) else -radius*ROUND_SHIFT
             tab=Point(x+shift,y).buffer(radius,quad_segs=24)
             result[a]=result[a].union(tab);result[b]=result[b].difference(tab)
     for r in range(rows-1):
         for c in range(columns):
             x=(c+.5)*tw;y=(r+1)*th
             a,b=((r,c),(r+1,c)) if (r+c)%2==0 else ((r+1,c),(r,c))
-            shift=radius*.35 if a==(r,c) else -radius*.35
+            shift=radius*ROUND_SHIFT if a==(r,c) else -radius*ROUND_SHIFT
             tab=Point(x,y+shift).buffer(radius,quad_segs=24)
             result[a]=result[a].union(tab);result[b]=result[b].difference(tab)
     return [(r,c,p.buffer(-clearance/2,join_style=2)) for (r,c),p in result.items()]
+
+
+def puzzle_reach(tw,th,style):
+    """How far a knob extends beyond a piece's grid cell, in mm."""
+    size=min(tw,th)
+    return size*(ROUND_TAB*(1+ROUND_SHIFT) if style=='rounded' else .14*1.5+CORNER_JITTER)
 
 
 def puzzle_edge(length, size, axis, row, col, seed):
@@ -80,17 +93,40 @@ def puzzle_edge(length, size, axis, row, col, seed):
     return points+[(length,0)]
 
 
+CORNER_JITTER = .05
+
+
+def puzzle_corner(row, col, columns, rows, tw, th, seed):
+    """Interior grid crossings wander by up to 5% of a piece; the outer edge stays straight."""
+    x,y=col*tw,row*th
+    if 0<col<columns and 0<row<rows:
+        value=(seed*131+(row+1)*557+(col+1)*811)%65521
+        size=min(tw,th)
+        x+=((value%41)/20-1)*CORNER_JITTER*size
+        y+=(((value//41)%41)/20-1)*CORNER_JITTER*size
+    return x,y
+
+
+def puzzle_boundary(a, b, edge, length):
+    """Lay an edge sampled along (0,0)-(length,0) between two wandering corners."""
+    dx,dy=b[0]-a[0],b[1]-a[1]
+    actual=math.hypot(dx,dy);ux,uy=dx/actual,dy/actual
+    return [(a[0]+ux*u*actual/length-uy*v,a[1]+uy*u*actual/length+ux*v) for u,v in edge]
+
+
 def classic_puzzle_shapes(width,height,columns,rows,clearance,seed):
     tw,th=width/columns,height/rows;size=min(tw,th)
+    corner=lambda r,c:puzzle_corner(r,c,columns,rows,tw,th,seed)
     horizontal={};vertical={}
     for r in range(rows+1):
         for c in range(columns):
             edge=[(0,0),(tw,0)] if r in (0,rows) else puzzle_edge(tw,size,0,r,c,seed)
-            horizontal[r,c]=[(c*tw+x,r*th+y) for x,y in edge]
+            horizontal[r,c]=puzzle_boundary(corner(r,c),corner(r,c+1),edge,tw)
     for r in range(rows):
         for c in range(columns+1):
             edge=[(0,0),(th,0)] if c in (0,columns) else puzzle_edge(th,size,1,r,c,seed)
-            vertical[r,c]=[(c*tw+y,r*th+x) for x,y in edge]
+            # Vertical edges run upwards; their knobs point along -x for a positive sign.
+            vertical[r,c]=puzzle_boundary(corner(r,c),corner(r+1,c),[(u,-v) for u,v in edge],th)
     return [(r,c,Polygon(horizontal[r,c][:-1]+vertical[r,c+1][:-1]+list(reversed(horizontal[r+1,c]))[:-1]+list(reversed(vertical[r,c]))[:-1]).buffer(-clearance/2,join_style=2))
             for r in range(rows) for c in range(columns)]
 
@@ -101,65 +137,104 @@ def record(ident,kind,solid,row=0,col=0,regions=None):
     return p
 
 
-def clipped_record(part,shape,ident,row,col,s):
-    from .geometry import prism
+def clipped_record(part,shape,ident,row,col,s,ease=0,number=None):
+    from .geometry import prism, drop_cut_crumbs, text_shape
     cutter=prism(shape,s.printer_z+100)
-    solid=part['solid']^cutter
+    if ease:
+        # Two narrow first-layer steps absorb elephant's foot, which would
+        # otherwise close a puzzle seam that is only a fraction of a millimetre.
+        cutter=prism(shape.buffer(-ease,join_style=2),.2)+prism(shape.buffer(-ease/2,join_style=2),.2,.2)+prism(shape,s.printer_z+100,.4)
+    if number:
+        minx,miny,maxx,maxy=shape.bounds
+        label=text_shape(number,min(maxx-minx,maxy-miny)*.34,5)
+        label=affinity.translate(affinity.scale(label,xfact=-1,yfact=1,origin=(0,0)),*shape.representative_point().coords[0])
+        if shape.buffer(-3).covers(label.envelope):
+            cutter=cutter-prism(label,.41,-.01)
+    solid,crumbs=drop_cut_crumbs(part['solid']^cutter,s.nozzle)
     regions={k:v^cutter for k,v in part.get('material_regions',{}).items()}
+    if crumbs:regions={k:v^solid for k,v in regions.items()}
     return record(ident,part['kind'],solid,row,col,regions if s.multicolour else None)
+
+
+PUZZLE_ROAD = .4
+PUZZLE_WATER = .6
+PUZZLE_BUILDING = .8
+PUZZLE_EASE = .25
+
+
+def puzzle_source(s, width, height):
+    """Printable stepped relief for a thin puzzle: every feature is two or more layers."""
+    water=PUZZLE_WATER if s.water else 0
+    return s.model_copy(update=dict(
+        map_format='artwork',artwork_shape='rectangle',artwork_rotation=0,layout='manual',columns=1,rows=1,joints=False,labels=False,
+        seam=0,frame_mode='none',front_caption=False,hang_mode='none',width=width,height=height,
+        # Land sits 3 mm above the bed; water is cut into that, never below a 2.4 mm floor.
+        base=3-max(water,min(s.road_height,PUZZLE_ROAD) if s.roads=='engraved' else 0),
+        water_depth=PUZZLE_WATER,water_bank=min(s.water_bank,.6),road_height=PUZZLE_ROAD,railway_height=min(s.railway_height,PUZZLE_ROAD),
+        building_style='uniform',building_type_heights=False,building_exaggeration=1e-6,building_min_height=PUZZLE_BUILDING,
+        tree_height=min(s.tree_height,PUZZLE_BUILDING),field_height=min(s.field_height,PUZZLE_ROAD),
+        markers=[m.model_copy(update=dict(rise=min(m.rise,.6))) for m in s.markers],
+        trails=[t.model_copy(update=dict(height=min(t.height,PUZZLE_ROAD))) for t in s.trails]))
 
 
 def generate_format(s,progress,data_override=None):
     from .geometry import generate_solids, prism, union
     if s.map_format=='jigsaw':
-        source=s.model_copy(update=dict(map_format='artwork',layout='manual',columns=1,rows=1,joints=False,labels=False,seam=0,frame_mode='none',front_caption=False))
         inset=s.frame_width if s.frame_mode!='none' else 0
         # Generate geography in the inner area, then translate into the surround.
         iw,ih=s.width-2*inset,s.height-2*inset
-        source=source.model_copy(update=dict(width=iw,height=ih,base=3))
-        baseline,meta=generate_solids(source,progress,data_override)
+        source=puzzle_source(s,iw,ih)
+        baseline,meta=generate_solids(source,progress,data_override,relief_limit=s.puzzle_relief)
         terrain=next(p for p in baseline if p['kind']=='terrain')
-        # Compress every surface feature together, preserving its footprint and
-        # colour while keeping a full-strength, flat 3 mm underside.
-        top=terrain['solid'].bounding_box()[5]
-        factor=min(1.,s.puzzle_relief/max(top-source.base,1e-9))
-        shift=source.base*(1-factor)
-        core=prism(box(0,0,iw,ih),shift) if shift>1e-9 else None
-        def shallow(solid):
-            return solid.scale((1,1,factor)).translate((0,0,shift))
-        solid=shallow(terrain['solid'])
-        regions={k:shallow(v) for k,v in terrain.get('material_regions',{}).items()}
-        if core is not None:
-            solid=solid+core
-            if s.multicolour:regions['ground']=regions['ground']+core if 'ground' in regions else core
-        terrain={**terrain,'solid':solid,'material_regions':regions}
         terrain={**terrain,'solid':terrain['solid'].translate((inset,inset,0)),
                  'material_regions':{k:v.translate((inset,inset,0)) for k,v in terrain.get('material_regions',{}).items()}}
+        shapes=puzzle_shapes(iw,ih,s.puzzle_columns,s.puzzle_rows,s.puzzle_clearance,style=s.puzzle_style,seed=s.puzzle_seed)
         parts=[]
-        for r,c,shape in puzzle_shapes(iw,ih,s.puzzle_columns,s.puzzle_rows,s.puzzle_clearance,style=s.puzzle_style,seed=s.puzzle_seed):
-            p=clipped_record(terrain,affinity.translate(shape,inset,inset),f'Puzzle_{r+1}_{c+1}',r,c,s)
+        for r,c,shape in shapes:
+            p=clipped_record(terrain,affinity.translate(shape,inset,inset),f'Puzzle_{r+1}_{c+1}',r,c,s,ease=PUZZLE_EASE,
+                             number=f'{r+1}-{c+1}' if s.labels else None)
             p['assembly_offset_mm']=[0,0,s.frame_depth if inset else 0]
             parts.append(p)
+        meta.update(columns=s.puzzle_columns,rows=s.puzzle_rows,joints=[],frame_fit=None,format='jigsaw',mounting=None)
         if inset:
             outer=box(0,0,s.width,s.height);inner=box(inset-s.tolerance,inset-s.tolerance,s.width-inset+s.tolerance,s.height-inset+s.tolerance)
             tray=prism(outer,s.frame_depth)+prism(outer.difference(inner),s.frame_height,s.frame_depth)
+            cols,rows=s.tile_layout()
+            if s.hang_mode=='keyholes':
+                from . import mounting
+                seams=[box(c*s.width/cols-6,0,c*s.width/cols+6,s.height) for c in range(1,cols)]
+                for x,y in mounting.keyhole_positions(s.width,s.height-inset-22,outer.buffer(-6),seams):
+                    tray=tray-mounting.keyhole_cut(x,y)
+                meta['mounting']=mounting.describe(s)
+                meta['warnings'].append('Tray keyholes: glue the finished puzzle into its tray before hanging; loose pieces will not stay in on a wall.')
+            # A tray wider than the bed prints as plates, keyed together underneath.
+            from .geometry import key_shape
+            joins=[(c*s.width/cols,(r+f)*s.height/rows,0) for c in range(1,cols) for r in range(rows) for f in (.3,.7)]
+            joins+=[((c+f)*s.width/cols,r*s.height/rows,90) for r in range(1,rows) for c in range(cols) for f in (.3,.7)]
+            if joins:
+                tray=tray-union([prism(affinity.translate(affinity.rotate(key_shape(s.tolerance),angle,origin=(0,0)),x,y),1.9,-.1) for x,y,angle in joins])
             parts+=split_holder(tray,s)
-        meta.update(columns=s.puzzle_columns,rows=s.puzzle_rows,joints=[],frame_fit=None,format='jigsaw')
-        meta['whole_volume_mm3']=sum(p['solid'].volume() for p in parts if p['kind']=='terrain')
-        meta['puzzle_thickness_mm']=3+s.puzzle_relief
+            if joins:
+                key=record('Tray_key','key',prism(key_shape(),1.6));key['quantity']=len(joins);parts.append(key)
+        pieces=[p for p in parts if p['kind']=='terrain']
+        meta['whole_volume_mm3']=sum(p['solid'].volume() for p in pieces)
+        thickness=max(p['solid'].bounding_box()[5] for p in pieces)
+        meta['puzzle_thickness_mm']=round(thickness,2)
         meta['puzzle_pattern']={'style':s.puzzle_style,'seed':s.puzzle_seed}
-        meta['warnings'].append(f'Almost-flat jigsaw: 3 mm base with at most {s.puzzle_relief:g} mm relief, including buildings, marks and trails. All vertical detail is compressed together. {s.puzzle_columns*s.puzzle_rows} pieces, {s.puzzle_clearance:g} mm total seam clearance. Print Puzzle_Fit pieces before the full map.')
-        # Use the actual first shared edge, so the coupon tests this design.
-        fit_shapes=puzzle_shapes(iw,ih,s.puzzle_columns,s.puzzle_rows,s.puzzle_clearance,style=s.puzzle_style,seed=s.puzzle_seed)
-        test=fit_shapes[:2]
-        for r,c,p in test:parts.append(record(f'Puzzle_Fit_{c+1}','coupon',prism(p,3)))
+        meta['warnings'].append(f'Jigsaw: {s.puzzle_columns*s.puzzle_rows} interlocking pieces, up to {thickness:.1f} mm thick. Land rises at most {s.puzzle_relief:g} mm above a 3 mm base; water is cut {PUZZLE_WATER:g} mm, roads stand {PUZZLE_ROAD:g} mm and buildings {PUZZLE_BUILDING:g} mm so each prints as whole layers. Seams have {s.puzzle_clearance:g} mm total clearance and eased bottom edges. Print the Puzzle_Fit pair before the full map.')
+        # The coupon is the design's own first pair of neighbours, eased like every piece.
+        blank={'kind':'coupon','solid':prism(box(0,0,iw,ih),3)}
+        for r,c,p in shapes[:2]:
+            fit=clipped_record(blank,p,f'Puzzle_Fit_{c+1}',0,0,s.model_copy(update=dict(multicolour=False)),ease=PUZZLE_EASE)
+            fit['neighbours']={};parts.append(fit)
         return parts,meta
     parts=[];metas=[]
-    footprints=list(cells(s));tray_height=max(s.frame_depth,4 if s.wall_mode!='legacy' else 3,s.magnet_depth+s.magnet_clearance+1.5 if s.mount_mode=='magnets' else 0)
+    from . import mounting
+    footprints=list(cells(s));tray_height=max(s.frame_depth,4 if s.wall_mode!='legacy' else 3,s.magnet_depth+s.magnet_clearance+1.5 if s.mount_mode=='magnets' else 0,mounting.holder_floor(s) if s.wall_mode!='legacy' else 0)
     continuous=s.wall_mode=='continuous'
     shared=None
     if continuous:
-        source=s.model_copy(update=dict(map_format='artwork',width=s.width-2*s.frame_width,height=s.height-2*s.frame_width,frame_mode='none',front_caption=False,joints=False,labels=False,layout='manual',columns=1,rows=1))
+        source=s.model_copy(update=dict(map_format='artwork',artwork_shape='rectangle',artwork_rotation=0,width=s.width-2*s.frame_width,height=s.height-2*s.frame_width,frame_mode='none',front_caption=False,joints=False,labels=False,layout='manual',columns=1,rows=1))
         baseline,shared_meta=generate_solids(source,progress,data_override)
         shared=next(p for p in baseline if p['kind']=='terrain')
         shared={**shared,'solid':shared['solid'].translate((s.frame_width,s.frame_width,0)), 'material_regions':{k:v.translate((s.frame_width,s.frame_width,0)) for k,v in shared.get('material_regions',{}).items()}}
@@ -168,7 +243,7 @@ def generate_format(s,progress,data_override=None):
         tile=s.map_tiles[i] if i<len(s.map_tiles) else None
         bounds=tile.bounds if tile else s.bounds;name=s.name if continuous else tile.name if tile else s.name
         minx,miny,maxx,maxy=shape.bounds;w=maxx-minx;h=maxy-miny
-        source=s.model_copy(update=dict(map_format='artwork',name=name,bounds=bounds,width=w,height=h,frame_mode='none',front_caption=False,joints=False,labels=False,layout='manual',columns=1,rows=1,markers=tile.markers if tile else s.markers,trails=tile.trails if tile else s.trails,custom_buildings=tile.custom_buildings if tile else s.custom_buildings,reference_image=None))
+        source=s.model_copy(update=dict(map_format='artwork',artwork_shape='rectangle',artwork_rotation=0,name=name,bounds=bounds,width=w,height=h,frame_mode='none',front_caption=False,joints=False,labels=False,layout='manual',columns=1,rows=1,markers=tile.markers if tile else s.markers,trails=tile.trails if tile else s.trails,custom_buildings=tile.custom_buildings if tile else s.custom_buildings,reference_image=None))
         def report(percent,message):progress(5+int((i+percent/100)*50/len(footprints)),f'Tile {i+1}/{len(footprints)} · {message}')
         if continuous:
             t=shared;meta=shared_meta
@@ -213,8 +288,12 @@ def generate_format(s,progress,data_override=None):
     meta.update(columns=s.collection_columns,rows=s.collection_rows,joints=[],frame_fit=None,format=s.map_format,map_sources=[{'name':parts[i]['map_name'],'dem':m['dem'],'osm':m['osm']} for i,m in enumerate(metas)])
     meta['warnings']=list(metas[0]['warnings']) if continuous else [f'{parts[i]["map_name"]}: {warning}' for i,m in enumerate(metas) for warning in m['warnings']]
     meta['wall_mode']=s.wall_mode
+    meta['mounting']=mounting.describe(s,len(footprints)) if s.wall_mode!='legacy' else None
     if s.wall_mode!='legacy':
-        meta['warnings'].append('Expandable wall: one removable insert and keyed holder per tile. Rear keys align adjacent holders; each holder must be fixed independently using its rear keyhole or to a rigid backing. Keys are not load-bearing hanging hardware. Test print the fit pieces before printing the wall.')
+        meta['warnings'].append({'keyholes':'Expandable wall: one removable insert and keyed holder per tile. Rear keys align adjacent holders; hang each holder on its own screw through the rear keyhole. A keyhole tile drops 7 mm onto its screw, so add new tiles beside or above mounted ones. Keys are not load-bearing. Test print the fit pieces first.',
+            'pucks':'Expandable wall: each holder pushes onto a square wall puck fixed with one countersunk screw. Use Puck_spacing_jig over a mounted puck to place the next one; no tile needs to come down to add another. Print Puck_Socket_Fit and one Wall_puck first and check the push fit.',
+            'magnet_pucks':'Expandable wall: each holder is held on a square wall puck by two magnets; the square carries the weight. Glue magnets into the pucks and holders with matching polarity and let the adhesive cure before hanging. Use Puck_spacing_jig to place each new puck. Magnets, screws and adhesive are not supplied.',
+            'none':'Expandable wall: one removable insert and keyed holder per tile, with no wall fixing. Rear keys align adjacent holders; fix them to a rigid backing or use your own hardware. Keys are not load-bearing.'}[s.hang_mode])
     if continuous:
         meta['warnings'].append('Continuous map: all tiles are cut from one geographic surface. Extension keeps the original geographic scale and terrain datum. Locations below that datum are flattened to the original base.')
     meta['warnings'].append(f'Collection: each tile uses its own geographic area. Holders have {s.tolerance:g} mm edge clearance. Fit-test pockets before printing; glue magnets into blind pockets with matching polarity. Magnets and adhesive are not supplied.' if s.mount_mode=='magnets' else 'Collection: removable map inserts sit in matching holders. Fit-test the edge clearance before printing the full collection.')
@@ -235,6 +314,7 @@ def split_holder(solid,s):
 def modular_holders(footprints,s,tray_height):
     """Independent standard modules; open rear key pockets keep additions reversible."""
     from .geometry import prism, union, key_shape
+    from . import mounting
     result=[]
     for r,c,shape in footprints:
         outer=shape.buffer(s.tile_gap/2,join_style=2)
@@ -250,12 +330,11 @@ def modular_holders(footprints,s,tray_height):
             socket=affinity.translate(affinity.rotate(key_shape(s.tolerance),angle,origin=(0,0)),x,y)
             sockets.append(prism(socket,2.1,-.01))
         holder=holder-union(sockets)
-        # A rear keyhole has an entry for a 6mm head and a narrower retaining throat.
-        x,y=cx,cy+s.tile_size*.12
-        entry=Point(x,y).buffer(3.5,quad_segs=24)
-        cavity=entry.union(Point(x,y+7).buffer(3.5,quad_segs=24)).convex_hull
-        throat=Point(x,y).buffer(1.8,quad_segs=24).union(Point(x,y+7).buffer(1.8,quad_segs=24)).convex_hull
-        holder=holder-prism(entry,2.8,-.01)-prism(cavity,1.8,1)-prism(throat,1.1,-.01)
+        if s.hang_mode=='keyholes':
+            # A rear keyhole has an entry for a 6mm head and a narrower retaining throat.
+            holder=holder-mounting.keyhole_cut(cx,cy+s.tile_size*.12)
+        elif mounting.puck_modes(s):
+            holder=holder-mounting.socket_cut(s,cx,cy)
         result.append(record(f'Holder_{r+1}_{c+1}','frame',holder,r,c,{'frame':holder} if s.multicolour else None))
     # Print keys separately, one for each adjoining edge. All holders have the same sockets.
     outers=[shape.buffer(s.tile_gap/2,join_style=2) for _,_,shape in footprints]
@@ -271,4 +350,6 @@ def modular_holders(footprints,s,tray_height):
     for name,region in [('Wall_Fit_Left',box(-12,-9,0,9)),('Wall_Fit_Right',box(0,-9,12,9))]:
         result.append(record(name,'coupon',test^prism(region,5)))
     result.append(record('Wall_Fit_Key','coupon',prism(key_shape(),1.8)))
+    if mounting.puck_modes(s):
+        result+=mounting.wall_parts(s,len(footprints),min(s.printer_width,s.printer_height)-2*s.margin)
     return result

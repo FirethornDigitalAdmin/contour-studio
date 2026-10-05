@@ -44,27 +44,59 @@ export function resizeCollection(s: Settings, changes: Partial<Settings>): Parti
       const unproject=(y:number)=>(2*Math.atan(Math.exp(y))-Math.PI/2)*180/Math.PI;
       geographic.bounds={...s.bounds,east:wrapLongitude(s.bounds.west+longitudeSpan(s.bounds)*newWidth/oldWidth),north:unproject(project(s.bounds.south)+(project(s.bounds.north)-project(s.bounds.south))*newHeight/oldHeight)};
     } else if(!continuousWall(s)) geographic.bounds=fitArtworkBounds(next.bounds,newWidth/newHeight);
-    if('bounds' in changes || 'map_format' in changes || 'tile_size' in changes) {geographic.elevation_reference=null;geographic.wall_scale=null;};
+    // Adding or removing a tile moves the map's edges but keeps its printed scale and height datum.
+    if(('bounds' in changes && !('wall_positions' in changes)) || 'map_format' in changes || 'tile_size' in changes) {geographic.elevation_reference=null;geographic.wall_scale=null;};
   }
   return {...changes,...switched,...dimensions,...geographic,map_tiles,active_tile,layout:'auto',joints:false,frame_contour:'flat',front_caption:false};
 }
 export function activeMapSettings(s: Settings): Settings {
   if(!collection(s))return s;
-  if(continuousWall(s))return {...s,map_format:"artwork",width:s.width-2*s.frame_width,height:s.height-2*s.frame_width,frame_mode:"none",layout:"manual",columns:1,rows:1};
+  if(continuousWall(s))return {...s,map_format:"artwork",artwork_shape:"rectangle",artwork_rotation:0,width:s.width-2*s.frame_width,height:s.height-2*s.frame_width,frame_mode:"none",layout:"manual",columns:1,rows:1};
   return {...s,width:s.tile_size,height:s.map_format==='hexagons'?s.tile_size*Math.sqrt(3)/2:s.tile_size,frame_mode:'none',layout:'manual',columns:1,rows:1};
 }
 
+const pitch=(s:Settings):[number,number]=>s.map_format==='hexagons'?[s.tile_size*.75+Math.sqrt(3)/2*s.tile_gap,s.tile_size*Math.sqrt(3)/2+s.tile_gap]:[s.tile_size+s.tile_gap,s.tile_size+s.tile_gap];
+const project=(lat:number)=>Math.log(Math.tan(Math.PI/4+lat*Math.PI/360));
+const unproject=(y:number)=>(2*Math.atan(Math.exp(y))-Math.PI/2)*180/Math.PI;
+/** Move a wall's grid origin and, for one continuous map, its geographic edges with it. */
+function rebaseWall(s: Settings, positions: [number,number][], shift: [number,number]): Partial<Settings> {
+  const moved=positions.map(([r,c]):[number,number]=>[r+shift[0],c+shift[1]]);
+  const layout:Partial<Settings>={wall_positions:moved,collection_columns:Math.max(...moved.map(p=>p[1]))+1,collection_rows:Math.max(...moved.map(p=>p[0]))+1};
+  if(!continuousWall(s))return layout;
+  const next=collectionDimensions({...s,...layout}),[px,py]=pitch(s);
+  const oldW=s.width-2*s.frame_width,oldH=s.height-2*s.frame_width,newW=next.width-2*s.frame_width,newH=next.height-2*s.frame_width;
+  // The new map area, measured in millimetres from the old south-west corner.
+  const x0=-shift[1]*px,y0=-shift[0]*py,span=longitudeSpan(s.bounds),south=project(s.bounds.south),rise=project(s.bounds.north)-south;
+  // An edge that has not moved keeps its exact stored value.
+  return {...layout,bounds:{west:x0?wrapLongitude(s.bounds.west+span*x0/oldW):s.bounds.west,east:Math.abs(x0+newW-oldW)>1e-9?wrapLongitude(s.bounds.west+span*(x0+newW)/oldW):s.bounds.east,south:y0?unproject(south+rise*y0/oldH):s.bounds.south,north:Math.abs(y0+newH-oldH)>1e-9?unproject(south+rise*(y0+newH)/oldH):s.bounds.north}};
+}
 export function addWallTile(s: Settings, position: [number,number]): Partial<Settings> {
   const positions=wallPositions(s);
   if(positions.some(([r,c])=>r===position[0]&&c===position[1]) || positions.length>=36)return {};
-  const nextPositions=[...positions,position];
+  // A tile south or west of the first row or column shifts the whole grid along.
+  if(position[1]<0&&s.map_format==='hexagons')return {};
+  const shift:[number,number]=[position[0]<0?-position[0]:0,position[1]<0?-position[1]:0];
   const tile: MapTile={id:crypto.randomUUID(),name:continuousWall(s)?s.name:'Choose a place',bounds:fitArtworkBounds(s.bounds,s.map_format==='hexagons'?2/Math.sqrt(3):1),markers:[],trails:[],custom_buildings:[],reference_image:null};
-  return {wall_positions:nextPositions,collection_columns:Math.max(...nextPositions.map(p=>p[1]))+1,collection_rows:Math.max(...nextPositions.map(p=>p[0]))+1,map_tiles:[...s.map_tiles,tile],active_tile:s.map_tiles.length,...(!continuousWall(s)?{name:tile.name,bounds:tile.bounds,markers:[],trails:[],custom_buildings:[],reference_image:null}:{})};
+  return {...rebaseWall(s,[...positions,position],shift),map_tiles:[...s.map_tiles,tile],active_tile:s.map_tiles.length,...(!continuousWall(s)?{name:tile.name,bounds:tile.bounds,markers:[],trails:[],custom_buildings:[],reference_image:null}:{})};
+}
+export function removeWallTile(s: Settings, index: number): Partial<Settings> {
+  const positions=wallPositions(s);
+  if(positions.length<2||index<0||index>=positions.length)return {};
+  const kept=positions.filter((_,i)=>i!==index),map_tiles=s.map_tiles.filter((_,i)=>i!==index);
+  const minRow=Math.min(...kept.map(p=>p[0])),minCol=Math.min(...kept.map(p=>p[1]));
+  const shift:[number,number]=[-minRow,s.map_format==='hexagons'?-2*Math.floor(minCol/2):-minCol];
+  const active_tile=Math.min(index<s.active_tile?s.active_tile-1:s.active_tile,map_tiles.length-1),tile=map_tiles[active_tile];
+  return {...rebaseWall(s,kept,shift),map_tiles,active_tile,...(!continuousWall(s)&&tile?{name:tile.name,bounds:tile.bounds,markers:tile.markers,trails:tile.trails,custom_buildings:tile.custom_buildings??[],reference_image:tile.reference_image??null}:{})};
 }
 export function wallAdditions(s: Settings): [number,number][] {
   const positions=wallPositions(s),occupied=new Set(positions.map(p=>p.join(','))),result=new Map<string,[number,number]>();
-  for(const [r,c] of positions)for(const [dr,dc] of (s.map_format==='hexagons'?[[1,0],[-1,0],[0,1],[0,-1],[c%2?1:-1,1],[c%2?1:-1,-1]]:[[0,1],[1,0],[0,-1],[-1,0]])) {
-    const p:[number,number]=[r+dr,c+dc];if(p[0]>=0&&p[1]>=0&&p[0]<6&&p[1]<6&&!occupied.has(p.join(',')))result.set(p.join(','),p);
+  const rows=positions.map(p=>p[0]),cols=positions.map(p=>p[1]),hex=s.map_format==='hexagons';
+  // Six rows and columns at most, counted across the tiles that exist rather than from a fixed corner.
+  const fits=(values:number[],value:number,step:number)=>Math.max(...values,value)-Math.min(...values,value)+(value<0?step-1:0)<6;
+  for(const [r,c] of positions)for(const [dr,dc] of (hex?[[1,0],[-1,0],[0,1],[0,-1],[c%2?1:-1,1],[c%2?1:-1,-1]]:[[0,1],[1,0],[0,-1],[-1,0]])) {
+    const p:[number,number]=[r+dr,c+dc];
+    // Hexagon columns alternate their stagger, so a hexagon wall cannot gain a column on its west side.
+    if(!occupied.has(p.join(','))&&fits(rows,p[0],1)&&fits(cols,p[1],1)&&!(hex&&p[1]<0))result.set(p.join(','),p);
   }
   return [...result.values()];
 }

@@ -147,6 +147,38 @@ def material_palette(settings, parts):
     return palette
 
 
+def colour_region_mesh(solid, stl_origin=None):
+    """Mesh one colour volume, preferring a strictly watertight binary STL.
+
+    Dense city partitions touch themselves along edges and can pinch by less
+    than float32 spacing. The parent tile stays strictly validated; a colour
+    volume inside it only has to keep manifold topology and its native volume,
+    which slicers accept without repair. Such meshes are marked tolerant.
+    """
+    try:
+        return as_trimesh(solid, ensure_stl=stl_origin is not None, stl_origin=stl_origin)
+    except ValueError:
+        if stl_origin is None:
+            raise
+    pieces = [piece for piece in solid.decompose() if piece.volume() > 1e-6]
+    if not pieces:
+        raise ValueError('Colour volume is empty after removing zero-thickness sheets.')
+    solid = md.Manifold.batch_boolean(pieces, md.OpType.Add) if len(pieces) > 1 else pieces[0]
+    raw = solid.to_mesh64()
+    mesh = trimesh.Trimesh(vertices=np.array(raw.vert_properties)[:, :3], faces=np.array(raw.tri_verts), process=False)
+    local = (mesh.vertices - np.asarray(stl_origin, dtype=float)).astype(np.float32).astype(np.float64)
+    rounded = trimesh.Trimesh(vertices=local, faces=mesh.faces, process=False)
+    volume = solid.volume()
+    if not np.isfinite(local).all() or not _tolerant_volume(rounded.volume, volume):
+        raise ValueError('Colour volume changes size at binary STL precision; no print package was published.')
+    mesh.metadata['contour_tolerant'] = True
+    return mesh
+
+
+def _tolerant_volume(volume, native_volume):
+    return bool(np.isfinite(volume)) and abs(volume-native_volume) <= max(.01, abs(native_volume)*1e-5)
+
+
 def validated_material_regions(part, meshes=None, *, stl_origin=None):
     """Reject missing/overlapping material volumes before publishing a pack."""
     regions = {name: solid for name, solid in part.get('material_regions', {}).items() if not solid.is_empty()}
@@ -157,10 +189,10 @@ def validated_material_regions(part, meshes=None, *, stl_origin=None):
     region_volume = 0.0
     for name, solid in regions.items():
         try:
-            mesh = as_trimesh(solid, ensure_stl=stl_origin is not None, stl_origin=stl_origin)
+            mesh = colour_region_mesh(solid, stl_origin)
         except ValueError as error:
             raise ValueError(f'{part["id"]} material {name}: {error}') from error
-        if mesh.is_empty or not mesh.is_volume or not mesh.is_watertight or not mesh.is_winding_consistent or not np.isfinite(mesh.vertices).all():
+        if mesh.is_empty or not np.isfinite(mesh.vertices).all() or (not mesh.metadata.get('contour_tolerant') and (not mesh.is_volume or not mesh.is_watertight or not mesh.is_winding_consistent)):
             raise ValueError(f'{part["id"]} material {name} failed solid mesh validation.')
         if meshes is not None:
             meshes[name] = mesh
@@ -239,7 +271,12 @@ def assembly_svg(s,meta,parts):
             steps.append('Seat the terrain insert on the angled lip from the front. For a frame made of several pieces, keep the final rail loose if sliding the insert into place; dry-fit before gluing the frame and its rear keys.')
         else:
             steps.append('Match Frame_A1_* etc. to the same terrain position, then glue the separate frame pieces.')
-    steps.append('Bond the finished assembly to a rigid backing panel; mount hanging hardware on the panel.')
+    mount=meta.get('mounting')
+    if mount and mount.get('keyholes_mm'):
+        spacing=mount.get('screw_spacing_mm')
+        steps.append((f'Fix two screws level, {spacing:g} mm apart, leaving each head 3 mm proud of the wall.' if spacing else 'Fix one screw, leaving its head 3 mm proud of the wall.')+f' Use a {mount["screw"]}. Offer the glued artwork up to the screws and lower it 7 mm into the keyhole slots.')
+    else:
+        steps.append('Bond the finished assembly to a rigid backing panel; mount hanging hardware on the panel.')
     if s.map_format != 'artwork':
         steps=['Print the included fit-test pieces first. Check edge and magnet fit before printing the whole project.',
                'Open the numbered Bambu print-plate projects for all pieces, or import individual STLs rear-down.',
@@ -247,11 +284,21 @@ def assembly_svg(s,meta,parts):
         if s.map_format=='jigsaw':
             steps+=['Arrange Puzzle_row_column pieces using the assembled preview. The pieces have a 3 mm flat base and shallow map relief. Seat them in the tray without forcing the tabs.', 'Keep puzzle pieces removable. Glue only the holder plates to a rigid backing board.']
         elif s.wall_mode!='legacy':
-            steps += [('One continuous geographic map spans these removable inserts.' if s.wall_mode=='continuous' else 'Each removable insert has its own place.'), 'Arrange Holder_row_column modules as shown. Push Wall_key pieces into the rear sockets across shared edges. Keep map inserts lift-out; do not glue the modules together.', 'Fix every holder independently using its rear keyhole (6 mm screw head, 3 mm shank) or attach holders to a rigid backing board. Rear keys align modules and do not support wall loads.', 'Reopen this saved project and select an adjacent + tile to extend it. Print the newly added Map and Holder files and their joining keys; existing modules stay compatible.', 'Use Wall_Fit_Left, Wall_Fit_Right and Wall_Fit_Key to check socket clearance before the full holders.']
+            steps += [('One continuous geographic map spans these removable inserts.' if s.wall_mode=='continuous' else 'Each removable insert has its own place.'), 'Arrange Holder_row_column modules as shown. Push Wall_key pieces into the rear sockets across shared edges. Keep map inserts lift-out; do not glue the modules together.', *([] if meta.get('mounting') else ['Attach the holders to a rigid backing board or use your own fixings. Rear keys align modules and do not support wall loads.']), 'Reopen this saved project and select an adjacent + tile to extend it. Print the newly added Map and Holder files and their joining keys; existing modules stay compatible.', 'Use Wall_Fit_Left, Wall_Fit_Right and Wall_Fit_Key to check socket clearance before the full holders.']
         else:
             steps+=['Each Map_row_column tile has its own location. Mini tiles share a surround; hexagons have individual holders.', 'Glue holder plates to a rigid backing board; keep map inserts removable. Hexagon holders can be arranged freely.']
             if s.mount_mode=='magnets':steps+=[f'Use {s.magnet_diameter:g} × {s.magnet_depth:g} mm disc magnets, two per tile and two per matching holder. Pockets have {s.magnet_clearance:g} mm diameter/depth allowance.', 'Mark polarity before gluing magnets into the blind pockets. Let adhesive cure before inserting tiles. Do not glue the tiles to the holders.']
         steps+=['Hardware, magnets, adhesive and backing board are not supplied. Physical fit requires a test print.']
+    mount=meta.get('mounting')
+    if s.map_format!='artwork' and mount:
+        if mount['mode']=='keyholes' and s.map_format=='jigsaw':
+            steps.insert(-1,f'To hang the puzzle, glue the pieces into the tray, fix two level screws ({mount["screw"]}) with heads 3 mm proud, then lower the tray 7 mm onto them.')
+        elif mount['mode']=='keyholes':
+            steps.insert(-1,f'Hang each holder on its own {mount["screw"]}, head 3 mm proud. Each holder lowers 7 mm onto its screw, so add new tiles beside or above mounted ones.')
+        else:
+            steps.insert(-1,f'Screw the first Wall_puck to the wall, square and level, with a {mount["screw"]} flush in its countersink. Drop Puck_spacing_jig over it to hold the next puck {mount["pitch_mm"]:g} mm away in line, screw that puck, then move the jig on. '
+                         +('Glue magnets into each puck and holder socket with matching polarity first. ' if mount['mode']=='magnet_pucks' else '')
+                         +'Push each holder straight onto its puck; rear Wall_key pieces keep neighbours flush. Add tiles later on any side without taking the wall down.')
     instructions.extend(f'{i}. {step}' for i,step in enumerate(steps,1))
     if has_keys:
         instructions.append('Keys align the pieces. They are not a structural hanging system. Hardware is not included.')
@@ -301,6 +348,9 @@ def build_project(s, folder:Path, progress, data_override=None):
     (folder/'project.zip').unlink(missing_ok=True)
     slug=re.sub(r'[^a-zA-Z0-9]+','-',s.project_name or s.name).strip('-') or 'Artwork'
     parts,meta=generate_solids(s,progress,data_override)
+    from .plaque import plaque_parts
+    plaques,plaque_notes=plaque_parts(s)
+    parts+=plaques; meta['warnings']+=plaque_notes
     if s.wall_mode=="continuous" and s.elevation_reference is None:
         s=s.model_copy(update={"elevation_reference":meta.get("elevation_reference"),"wall_scale":meta.get("scale_mm_per_m")})
     if s.joints and meta['joints']:
@@ -312,6 +362,7 @@ def build_project(s, folder:Path, progress, data_override=None):
     palette = material_palette(s, parts) if s.multicolour else []
     material_by_id = {m['id']: m for m in palette}
     multicolour_tiles, multicolour_files = [], []
+    tolerant_regions = []
     for idx,part in enumerate(parts):
         progress(62+int(30*idx/len(parts)),f'Validating and exporting {part["id"]}')
         native_volume=part['solid'].volume()
@@ -366,15 +417,21 @@ def build_project(s, folder:Path, progress, data_override=None):
                 local_region.apply_translation(-origin)
                 material_meshes.append((material, local_region.copy()))
                 native_region_volume=material_regions[ident].volume()
+                tolerant = bool(region_mesh.metadata.get('contour_tolerant'))
                 local_region.vertices = local_region.vertices.astype(np.float32).astype(np.float64)
-                clean_mesh_faces(local_region)
-                if not _valid_stl_mesh(local_region,native_region_volume):
+                if tolerant:
+                    tolerant_regions.append(f'{part["id"]} {ident}')
+                    region_valid = _tolerant_volume(local_region.volume, native_region_volume)
+                else:
+                    clean_mesh_faces(local_region)
+                    region_valid = _valid_stl_mesh(local_region,native_region_volume)
+                if not region_valid:
                     raise ValueError(f'{part["id"]} material {ident} cannot be represented as a solid STL.')
                 region_file = f'Materials/{part["id"]}/{slug}_{part["id"]}_F{material["filament"]}_{ident}.stl'
                 (folder / region_file).parent.mkdir(parents=True, exist_ok=True)
                 local_region.export(folder / region_file)
-                check_region = trimesh.load_mesh(folder / region_file, process=True)
-                if not _valid_stl_mesh(check_region,native_region_volume):
+                check_region = trimesh.load_mesh(folder / region_file, process=not tolerant)
+                if not (_tolerant_volume(check_region.volume, native_region_volume) if tolerant else _valid_stl_mesh(check_region,native_region_volume)):
                     raise ValueError(f'{part["id"]} material {ident} failed STL round-trip validation.')
                 material_results.append({**material, 'file': region_file, 'volume_mm3': round(float(region_mesh.volume), 4)})
                 multicolour_files.append(region_file)
@@ -417,15 +474,17 @@ def build_project(s, folder:Path, progress, data_override=None):
           'notes':['STLs use local print-bed coordinates; assembly_origin_mm restores original placement.',
                    'All front geometry is generated globally before Boolean sectioning.',
                    'Use a rigid backing panel and appropriate hardware for wall mounting.']}
+    if tolerant_regions:
+        info['model']['warnings'].append(f'{len(tolerant_regions)} dense colour volumes touch themselves along shared edges and are saved without edge welding. Their tiles remain strictly watertight; a slicer may report repaired edges on those colour parts.')
     if s.multicolour:
         filament_count = len({m['filament'] for m in palette})
         instructions = [
-            'Open Bambu/Print-plates-*.3mf as projects for prepared plates containing every piece and the required copies of keys. Alternatively, open one Multicolour/*.3mf tile or frame piece at a time.',
+            'Open Bambu/Print-plates-*.3mf as projects for prepared plates containing every piece and the required copies of keys. When a Bambu Lab printer was chosen in Contour Studio, these projects already use that printer, nozzle and its standard process. Alternatively, open one Multicolour/*.3mf tile or frame piece at a time.',
             f'Create {filament_count} filament entries in Bambu Studio matching the numbered colours in materials.json. Identical colours share one filament number.',
             'Some Bambu Studio versions show "invalid config, load geometry data only" for standard 3MF files. Accept geometry-only import; these files intentionally carry no printer profile.',
             f'If Standard 3MF Import Color appears, choose {filament_count} colours to keep the palette instead of automatic colour grouping. Check the resulting colours and named parts.',
             'Import the 3MF and expand its object in the Objects list. Check each named part uses the listed filament number; assign it manually if your Studio import mode does not keep part assignments.',
-            'Select your own printer, nozzle, build plate and suitable filament profiles. These geometry files do not include printer profiles, temperatures or G-code.',
+            'The single-piece Multicolour/*.3mf files carry geometry only: select your own printer, nozzle, build plate and filament profiles for those. Always slice with the nozzle size chosen in Contour Studio; small details are sized for it.',
             'Before printing, map the slicer filament entries to your loaded AMS trays. Slicer filament numbers are not automatic hardware tray assignments.',
             'Fallback: select all STLs from one Materials/<part_id>/ folder together, import them as one object with multiple parts, and preserve their relative positions.',
             'Do not centre, arrange, scale or drop the individual material parts to the bed. Move and arrange only the complete tile object, then assign each named part to its listed filament.',

@@ -16,13 +16,14 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from .config import tile_id
+from .artwork_shapes import uses_shape, artwork_outline, artwork_opening
 from .world import longitude_span
 from .infrastructure import road_width, fallback_height, underground, enabled_tag, railway_plan, printable_area, bridge_opening_plan, bridge_arch_profile
 from .geodata import Geography
 
 MAX_TREES = 1200
 MAX_FIELD_STRIPS = 800
-GEOMETRY_REVISION = 'map-formats-v14'
+GEOMETRY_REVISION = 'map-formats-v15'
 FRAME_LIP_WIDTH = 2.0
 FRAME_LIP_HEIGHT = 2.0
 
@@ -285,6 +286,23 @@ def fill_enclosed_voids(solid):
     # Contour/channel tangencies also leave exactly flat sheets whose native
     # volume fluctuates around zero. They are not printable feature islands.
     return union([part for part in solid.decompose() if part.volume()>1e-8])
+
+
+def drop_cut_crumbs(solid, nozzle):
+    """Discard unprintable slivers detached by a tile or piece boundary.
+
+    A seam through an overhanging crown or roof edge can leave a fragment that
+    neither rests on the bed nor is wide enough for one extrusion. Anything
+    larger stays, so export validation still reports real floating geometry.
+    """
+    kept=[]; dropped=0
+    for part in solid.decompose():
+        if part.volume()<=1e-8: continue
+        x0,y0,z0,x1,y1,z1=part.bounding_box()
+        if z0>0.01 and (min(x1-x0,y1-y0)<nozzle or part.volume()<nozzle**3):
+            dropped+=1; continue
+        kept.append(part)
+    return union(kept),dropped
 
 
 def prism(geom, height, bottom=0):
@@ -583,15 +601,42 @@ def frame_chamfer_core(s):
     return mesh_manifold(vertices,faces)
 
 
+def shaped_chamfer_core(s):
+    """Layer-sized offsets form a supported approximately 45-degree insert seat.
+
+    Offset operations preserve concave edges and holes, and may change topology.
+    Independent 0.1 mm layers avoid assuming corresponding polygon vertices.
+    """
+    opening=artwork_opening(s)
+    step=.1
+    layers=[]
+    for i in range(round(FRAME_LIP_HEIGHT/step)):
+        z=i*step
+        footprint=opening.buffer(-max(0,FRAME_LIP_WIDTH-z-step),join_style=2)
+        if not footprint.is_empty: layers.append(prism(footprint,step+.0001,z))
+    return union(layers)
+
+
+def shaped_frame_solid(s):
+    outer=artwork_outline(s)
+    opening=artwork_opening(s)
+    if opening.is_empty: raise ValueError('Reduce border width to leave room for the shaped map.')
+    frame=prism(outer.difference(opening),s.frame_depth+s.frame_height)
+    if s.frame_mode=='separate':
+        shelf=prism(opening.buffer(.1,join_style=2).intersection(outer),FRAME_LIP_HEIGHT)-shaped_chamfer_core(s)
+        frame=frame+shelf
+    return frame
+
+
 def key_shape(tolerance=0):
     # Two wider lobes prevent sideways slip; a flush underside key bridges the seam.
     poly=Polygon([(-5,-3),(-2,-3),(-1,-1.8),(1,-1.8),(2,-3),(5,-3),(5,3),(2,3),(1,1.8),(-1,1.8),(-2,3),(-5,3)])
     return poly.buffer(tolerance,join_style=2)
 
 
-def text_shape(text, width, size=3):
+def text_shape(text, width, size=3, family='DejaVu Sans'):
     # Explicit DejaVu bundled with matplotlib keeps lettering portable.
-    path=TextPath((0,0),text,size=size,prop=FontProperties(family='DejaVu Sans',weight='bold'))
+    path=TextPath((0,0),text,size=size,prop=FontProperties(family=family,weight='bold'))
     rings=[Polygon(p) for p in path.to_polygons() if len(p)>=3]
     shape=Polygon()
     for ring in rings: shape=shape.symmetric_difference(ring)
@@ -746,10 +791,11 @@ def marker_shape(symbol, size):
     return affinity.scale(shape,xfact=size/max(x1-x0,y1-y0),yfact=size/max(x1-x0,y1-y0),origin=(0,0))
 
 
-def generate_solids(s, progress, data_override=None):
+def generate_solids(s, progress, data_override=None, relief_limit=None):
     if s.map_format != 'artwork':
         from .formats import generate_format
         return generate_format(s,progress,data_override)
+    custom_outline=uses_shape(s)
     geo=Geography(s)
     longest=max(geo.map_width,geo.map_height)
     nx=max(16,round(s.resolution*geo.map_width/longest))+1
@@ -770,6 +816,9 @@ def generate_solids(s, progress, data_override=None):
     reserve=max(s.water_depth if s.water else 0,s.road_height if s.roads=='engraved' else 0, max((t.height for t in s.trails if t.style=='engraved'),default=0))
     reference=float(smoothed.min()) if s.elevation_reference is None else s.elevation_reference
     relief=np.maximum(0,smoothed-reference)*geo.scale*s.exaggeration*s.land_variation
+    if relief_limit is not None and float(relief.max())>relief_limit:
+        # Shallow formats keep the whole landform, scaled into their height budget.
+        relief=relief*(relief_limit/float(relief.max()))
     continuous_relief=relief
     xs,ys,relief=style_terrain(xs,ys,relief,s)
     ny,nx=relief.shape
@@ -794,7 +843,7 @@ def generate_solids(s, progress, data_override=None):
         warnings.append('Mapped building detail omitted: selected area exceeds 100 km². Select a smaller area to include buildings.')
     if s.terrain_style in ('terraced','sculpted') and float(relief.max()) < s.contour_height:
         warnings.append('This area has less relief than one contour band. Reduce contour height or increase the terrain height multiplier for a more visible style.')
-    map_clip=box(geo.inset,geo.inset,s.width-geo.inset,s.height-geo.inset)
+    map_clip=artwork_opening(s) if custom_outline else box(geo.inset,geo.inset,s.width-geo.inset,s.height-geo.inset)
     if abs((geo.ground_width/geo.ground_height)/(geo.map_width/geo.map_height)-1)>0.05:
         warnings.append('The selected geographic rectangle differs from the artwork aspect ratio by more than 5%; horizontal geography is stretched to fill. Use “Match artwork ratio” on the map to preserve proportions.')
     def sample(points):
@@ -1126,38 +1175,52 @@ def generate_solids(s, progress, data_override=None):
             iy=np.clip((pts[:,1]-ys[0])/(ys[-1]-ys[0])*(ny-1),0,ny-1)
             return map_coordinates(envelope,[iy,ix],order=1,mode='nearest')
         profile=frame_profile(s,frame_land)
-    frame=frame_solid(s,profile) if s.frame_mode!='none' else md.Manifold()
+    frame=shaped_frame_solid(s) if custom_outline and s.frame_mode!='none' else (frame_solid(s,profile) if s.frame_mode!='none' else md.Manifold())
     frame_range=([s.frame_depth+s.frame_height]*2 if s.frame_mode!='none' else None)
     if profile is not None:
         heights=profile(frame_loops(s,True)[2])
         frame_range=[float(heights.min()),float(heights.max())]
+    caption_solid=md.Manifold()
     if s.front_caption and s.frame_mode!='none':
-        b=s.bounds
-        lat,lon=(b.north+b.south)/2,((b.west+longitude_span(b.west,b.east)/2+180)%360-180)
-        text=f"{s.name.upper()} · {abs(lat):.4f}° {'N' if lat>=0 else 'S'}  {abs(lon):.4f}° {'E' if lon>=0 else 'W'}"
-        # Place the caption on the remaining flat front face, never across
-        # the inward-facing bevel. Narrow profiles reduce lettering size.
+        from .plaque import caption_text, lettering
+        # Keep lettering on the flat front face, never across a bevel.
+        # Narrow profiles reduce its size.
         flat_width=s.frame_width-s.inner_bevel-s.outer_bevel
-        caption_y=(s.outer_bevel+s.frame_width-s.inner_bevel)/2
-        shape=affinity.translate(text_shape(text,s.width-30,min(3,flat_width*0.65)),s.width/2,caption_y)
-        if profile is None:
-            frame=frame+prism(shape,0.6,s.frame_depth+s.frame_height-0.05)
+        rail_y=(s.outer_bevel+s.frame_width-s.inner_bevel)/2
+        caption_y=rail_y if s.caption_position=='bottom' else s.height-rail_y
+        room=s.width-2*s.frame_width-4
+        shape=lettering(caption_text(s),room,s.caption_size,s.caption_font,flat_width*.72)
+        if shape.is_empty:
+            warnings.append('Frame lettering is empty; nothing was added.')
         else:
-            # Match the front rail's piecewise linear top, including bevels.
-            front=frame_top_sample(s,profile)
-            caption=prism(shape,0.6).warp(lambda p: (p[0],p[1],p[2]+front(p[0],p[1])-0.05))
-            frame=frame+caption
+            x0,_,x1,_=shape.bounds
+            caption_x={'left':s.frame_width+2-x0,'right':s.width-s.frame_width-2-x1}.get(s.caption_align,s.width/2)
+            shape=affinity.translate(shape,caption_x,caption_y)
+            if profile is None and s.caption_style=='engraved':
+                frame=frame-prism(shape,.61,s.frame_depth+s.frame_height-.6)
+            elif profile is None:
+                caption_solid=prism(shape,.6,s.frame_depth+s.frame_height)
+                frame=frame+caption_solid
+            else:
+                # Match the rail's piecewise linear top, including bevels.
+                front=frame_top_sample(s,profile)
+                caption=prism(shape,0.6).warp(lambda p: (p[0],p[1],p[2]+front(p[0],p[1])-0.05))
+                frame=frame+caption
+            if shape.bounds[3]-shape.bounds[1]<max(1.6,4*s.nozzle):
+                warnings.append(f'Frame lettering is {shape.bounds[3]-shape.bounds[1]:.1f} mm tall. Widen the frame or use fewer characters for a {s.nozzle:g} mm nozzle.')
     frame_fit=None
     if s.frame_mode=='separate':
         # One constant footprint keeps terrain, buildings and texture inside
         # a vertical perimeter instead of tracing the frame's bevel at each
         # height. A matching 45-degree rear chamfer seats on the support lip
         # and prints rear-down without a horizontal cantilever or supports.
-        insert=frame_insert_footprint(s).buffer(-s.tolerance,join_style=2)
-        below_seat=prism(map_clip,FRAME_LIP_HEIGHT)-frame_chamfer_core(s)
+        insert=(map_clip if custom_outline else frame_insert_footprint(s)).buffer(-s.tolerance,join_style=2)
+        below_seat=prism(map_clip,FRAME_LIP_HEIGHT)-(shaped_chamfer_core(s) if custom_outline else frame_chamfer_core(s))
         terrain=(terrain^prism(insert,limit+1))-below_seat
         frame_fit={'lip_width_mm':FRAME_LIP_WIDTH,'lip_height_mm':FRAME_LIP_HEIGHT,
-                   'clearance_mm':s.tolerance,'seat_angle_degrees':45,'assembly':'chamfered-insert'}
+                   'clearance_mm':s.tolerance,'seat_angle_degrees':45,'assembly':'chamfered-insert', **({'shaped_border':True,'seat_step_mm':.1} if custom_outline else {})}
+    if custom_outline:
+        terrain=terrain ^ prism(map_clip,limit+1)
     whole=fill_enclosed_voids(terrain+frame)
     if s.frame_mode=='separate':
         terrain=fill_enclosed_voids(terrain)
@@ -1192,6 +1255,31 @@ def generate_solids(s, progress, data_override=None):
         whole=whole-holes
         terrain=terrain-holes
         frame=frame-holes
+    mounting_info=None
+    if s.hang_mode=='keyholes':
+        from . import mounting
+        blocked=[affinity.translate(affinity.rotate(key_shape(s.tolerance),j['angle'],origin=(0,0)),j['x'],j['y']).buffer(2) for j in joints]
+        blocked+=[box(col*tw-6,0,col*tw+6,s.height) for col in range(1,cols)]
+        if s.labels:
+            # The same rear recess rectangle label_tile cuts in each top-row tile.
+            for col in range(cols):
+                x0,x1=max(col*tw,geo.inset),min((col+1)*tw,s.width-geo.inset)
+                y0,y1=max(s.height-th,geo.inset),s.height-geo.inset
+                half_w,half_h=min(72,(x1-x0)-16)/2+1,min(22,(y1-y0)-12)/2+1
+                blocked.append(box((x0+x1)/2-half_w,(y0+y1)/2-half_h,(x0+x1)/2+half_w,(y0+y1)/2+half_h))
+        # Stay clear of the separate frame's rear lip and seat chamfer.
+        edge=6+(FRAME_LIP_WIDTH+FRAME_LIP_HEIGHT if s.frame_mode=='separate' else 0)
+        allowed=map_clip.buffer(-edge)
+        y=s.height-geo.inset-edge-mounting.KEYHOLE_TRAVEL-4
+        spots=mounting.keyhole_positions(s.width,y,allowed,blocked,2 if s.width>=120 else 1)
+        if spots:
+            slots=union([mounting.keyhole_cut(x,y) for x,y in spots])
+            whole=whole-slots; terrain=terrain-slots
+            mounting_info={**mounting.describe(s),'keyholes_mm':[[round(x,2),round(y,2)] for x,y in spots],
+                           'screw_spacing_mm':round(abs(spots[-1][0]-spots[0][0]),1) if len(spots)>1 else 0}
+            warnings.append(f'Wall mounting: {len(spots)} rear keyhole slot{"s" if len(spots)>1 else ""} in the top row'+(f', {mounting_info["screw_spacing_mm"]:g} mm apart' if len(spots)>1 else '')+'. Glue the full assembly before hanging; the slots carry the artwork, not the seams.')
+        else:
+            warnings.append('Wall mounting: no clear rear position was found for keyhole slots at this size. Use a backing panel.')
     material_sources={}
     if s.multicolour:
         progress(55,'Separating printable colour surfaces')
@@ -1261,6 +1349,13 @@ def generate_solids(s, progress, data_override=None):
             # the unchanged parent; priority resolves the microscopic overlap.
             area=printable_footprint(area)
             if not area.is_empty: material_sources[name]=area
+    if custom_outline:
+        from .artwork_shapes import artwork_outline
+        shape_cutter = prism(artwork_outline(s), limit+1)
+        terrain = terrain ^ shape_cutter
+        whole = whole ^ shape_cutter
+        if s.multicolour: colour_base = colour_base ^ shape_cutter
+        warnings.append('Artwork is cropped to its selected shape. Separate sections of letters or tiled outlines print as independent pieces.')
     progress(58,'Cutting the finished solid into printable tiles')
     parts=[]
     for row in range(rows):
@@ -1276,13 +1371,15 @@ def generate_solids(s, progress, data_override=None):
             neighbours={'north':tile_id(row-1,col) if row else None,'east':tile_id(row,col+1) if col<cols-1 else None,
                         'south':tile_id(row+1,col) if row<rows-1 else None,'west':tile_id(row,col-1) if col else None}
             part=(terrain if s.frame_mode=='separate' else whole)^cutter
+            if part.is_empty(): continue
             label_bounds=(max(left,geo.inset),max(bottom,geo.inset),min(right,s.width-geo.inset),min(top,s.height-geo.inset))
             if s.labels: part=label_tile(part,s,ident,label_bounds,neighbours)
             # A section can detach a zero-volume contour/channel tangent that
             # was still connected in the global model. Resolve it before print
             # validation and semantic material partitioning, preserving every
             # component with printable volume.
-            part=fill_enclosed_voids(part)
+            part,crumbs=drop_cut_crumbs(part,s.nozzle)
+            if crumbs: warnings.append(f'Tile {ident}: removed {crumbs} detached sliver{"s" if crumbs>1 else ""} narrower than the nozzle where a tile seam crosses an overhanging detail.')
             record={'id':ident,'kind':'terrain','solid':part,'row':row,'column':col,'neighbours':neighbours,'cut_bounds':[left,bottom,right,top]}
             if s.multicolour:
                 progress(58,f'Partitioning colour volumes for tile {ident} of {cols*rows}')
@@ -1306,17 +1403,37 @@ def generate_solids(s, progress, data_override=None):
                     for region in record['material_regions'].values():
                         as_trimesh(region,ensure_stl=True,stl_origin=origin)
                 except ValueError:
+                    following=record['material_regions']
                     record['material_regions']=material_partition(part,material_candidates,
                         core=(flat_colour_base^cutter)^prism(map_clip.buffer(-0.001),limit+1))
-                    record['colour_core']='level-fallback'
-                    warnings.append(f'Tile {ident} uses a deeper, level colour core because surface-following boundaries failed STL precision checks. Its colour regions still undergo full export validation.')
-            parts.append(record)
+                    try:
+                        for region in record['material_regions'].values():
+                            as_trimesh(region,ensure_stl=True,stl_origin=origin)
+                    except ValueError:
+                        # Neither core welds cleanly in a dense tile. Keep the
+                        # shallower colour; export saves it without edge welding.
+                        record['material_regions']=following
+                    else:
+                        record['colour_core']='level-fallback'
+                        warnings.append(f'Tile {ident} uses a deeper, level colour core because surface-following boundaries failed STL precision checks. Its colour regions still undergo full export validation.')
+            if custom_outline:
+                components = list(part.decompose())
+                for i, component in enumerate(components):
+                    piece = {**record, 'solid':component, 'id':ident if len(components)==1 else f'{ident}_{i+1}'}
+                    if s.multicolour:
+                        piece['material_regions'] = {name:region ^ component for name,region in record['material_regions'].items() if not (region ^ component).is_empty()}
+                    parts.append(piece)
+            else:
+                parts.append(record)
             if s.frame_mode=='separate':
                 frame_part=frame^cutter
                 # Every disconnected bar is its own print file.
                 for idx,piece in enumerate(frame_part.decompose()):
                     record={'id':f'Frame_{ident}_{idx+1}','kind':'frame','solid':piece,'row':row,'column':col,'neighbours':{},'cut_bounds':[left,bottom,right,top]}
-                    if s.multicolour: record['material_regions']={'frame':piece}
+                    if s.multicolour:
+                        # Raised lettering takes the special-places colour so it reads against the frame.
+                        letters=piece^caption_solid
+                        record['material_regions']={'frame':piece-caption_solid,'markers':letters} if letters.volume()>1e-6 else {'frame':piece}
                     parts.append(record)
     if s.joints and joints:
         parts.append({'id':'Joining_key','kind':'key','solid':prism(key_shape(),1.6),'quantity':len(joints),'neighbours':{}})
@@ -1364,7 +1481,7 @@ def generate_solids(s, progress, data_override=None):
     if count['skipped_invalid_features']:
         warnings.append(f"Skipped {count['skipped_invalid_features']} invalid building footprints from the source data.")
     if s.seam: warnings.append(f'{s.seam:.2f} mm seam gaps intentionally remove a narrow strip of geography at internal boundaries.')
-    return parts,{'geometry_revision':GEOMETRY_REVISION,'frame_fit':frame_fit,
+    return parts,{'geometry_revision':GEOMETRY_REVISION,'frame_fit':frame_fit,'mounting':mounting_info,
                   'colour_method':'surface-core-v1' if s.multicolour else None,
                   'custom_buildings':custom_count,'city_method':'mapped-parts-roofs-v1','dem':dem_meta,'osm':osm_meta,'features':count,'warnings':warnings,'joints':joints,
                   'land_height_mm':[float(z.min()),float(z.max())],'frame_height_mm':frame_range,

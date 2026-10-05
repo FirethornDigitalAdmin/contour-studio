@@ -1,3 +1,4 @@
+import { shapePath, shapedArtwork } from "./artworkShapes";
 import { Check, TriangleAlert, Printer } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { layout, type Settings } from "./types";
@@ -66,7 +67,7 @@ export default function LayoutView({
         aria-label={mode === "artwork" ? `${s.width} by ${s.height} millimetre artwork divided into ${columns} columns and ${rows} rows. Use arrow keys to inspect tiles, then Enter to see the build plate.` : `Tile ${tileName}, ${tileWidth.toFixed(1)} by ${tileHeight.toFixed(1)} millimetres, on your ${s.printer_width} by ${s.printer_height} millimetre build plate with ${s.margin} millimetre margins`}
       >
         {mode === "artwork" ? <>
-        <defs><clipPath id={clipId}><rect x={x} y={y} width={width} height={height} rx={cornerRadius} /></clipPath></defs>
+        <defs><clipPath id={clipId}>{shapedArtwork(s) ? <path d={shapePath(s)} transform={`translate(${x} ${y}) scale(${width/100} ${height/100})`} clipRule="evenodd"/> : <rect x={x} y={y} width={width} height={height} rx={cornerRadius} />}</clipPath></defs>
         <line
           x1={x}
           x2={x + width}
@@ -124,7 +125,7 @@ export default function LayoutView({
         >
           {s.height} mm
         </text>
-        <rect
+        {shapedArtwork(s) ? <path d={shapePath(s)} transform={`translate(${x} ${y}) scale(${width/100} ${height/100})`} fill="#e3e7d9" fillRule="evenodd"/> : <><rect
           x={x}
           y={y}
           width={width}
@@ -139,7 +140,7 @@ export default function LayoutView({
           height={Math.max(1, height - frame * 2)}
           rx={Math.max(0, cornerRadius - frame)}
           fill="#e3e7d9"
-        />
+        /></>}
         <g clipPath={`url(#${clipId})`}>
         {Array.from({ length: columns * rows }, (_, i) => {
           const col = i % columns,

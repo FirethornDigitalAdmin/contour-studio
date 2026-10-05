@@ -16,6 +16,7 @@ export function artworkRatio(s: Settings) {
   if(s.wall_mode==='continuous'&&(s.map_format==='mini_tiles'||s.map_format==='hexagons'))return (s.width-2*s.frame_width)/(s.height-2*s.frame_width);
   if(s.map_format==='mini_tiles')return 1;
   if(s.map_format==='hexagons')return 2/Math.sqrt(3);
+  if(s.map_format==="artwork" && (!["rectangle","square"].includes(s.artwork_shape??"rectangle") || (s.artwork_rotation??0)%360!==0))return s.width/s.height;
   const frame = s.frame_mode === 'none' ? 0 : s.frame_width;
   return Math.max(0.05, (s.width - 2 * frame) / Math.max(1, s.height - 2 * frame));
 }

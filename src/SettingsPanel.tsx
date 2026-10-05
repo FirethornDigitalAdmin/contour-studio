@@ -1,3 +1,4 @@
+import ShapePicker, { ShapeOutline, shapedArtwork, shapeSize } from "./artworkShapes";
 import { centreLongitude } from "./world";
 import {
   Check,
@@ -19,7 +20,8 @@ import {
 import { useRef, useState } from "react";
 import { layout, type Settings } from "./types";
 import { Field, NumberField, Toggle, Section, FeatureGroup, GridIcon } from "./Controls";
-import FormatEditor, { MountEditor, TilePicker } from "./FormatEditor";
+import FormatEditor, { MountEditor, TilePicker, WallMountEditor } from "./FormatEditor";
+import { CaptionEditor, PlaqueEditor } from "./TextPlaque";
 import TrailEditor from "./TrailEditor";
 import { collection } from "./formats";
 import MarkerEditor from "./MarkerEditor";
@@ -130,11 +132,18 @@ const tilePresets = [
 ];
 const printers = [
   { name: "Bambu Lab A1 mini", width: 180, depth: 180, height: 180 },
-  { name: "Bambu Lab P1S", width: 256, depth: 256, height: 256 },
+  { name: "Bambu Lab A1", width: 256, depth: 256, height: 256 },
+  { name: "Bambu Lab P1S", width: 256, depth: 256, height: 250 },
+  { name: "Bambu Lab P1P", width: 256, depth: 256, height: 250 },
+  { name: "Bambu Lab P2S", width: 256, depth: 256, height: 256 },
+  { name: "Bambu Lab X1 Carbon", width: 256, depth: 256, height: 250 },
+  { name: "Bambu Lab H2S", width: 340, depth: 320, height: 340 },
+  { name: "Bambu Lab H2D", width: 350, depth: 320, height: 325 },
   { name: "Creality Ender-3 V3 SE", width: 220, depth: 220, height: 250 },
   { name: "Creality K1 Max", width: 300, depth: 300, height: 300 },
   { name: "Original Prusa MK4S", width: 250, depth: 210, height: 220 },
 ];
+const nozzles = [0.2, 0.4, 0.6, 0.8];
 const frameProfiles: { name: string; values: Partial<Settings> }[] = [
   { name: "Soft gallery", values: { frame_width: 10, frame_depth: 5, frame_height: 12, corner_radius: 2, inner_bevel: 1, outer_bevel: 0.8 } },
   { name: "Slim", values: { frame_width: 6, frame_depth: 4, frame_height: 5, corner_radius: 1, inner_bevel: 0.5, outer_bevel: 0.5 } },
@@ -163,7 +172,9 @@ export default function SettingsPanel({
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
   const [customPrinter, setCustomPrinter] = useState(false);
   const printerDetails = useRef<HTMLDetailsElement>(null);
-  const matchingPrinter = printers.find(printer => s.printer_width === printer.width && s.printer_height === printer.depth && s.printer_z === printer.height);
+  const sizeMatches = (printer: typeof printers[number]) => s.printer_width === printer.width && s.printer_height === printer.depth && s.printer_z === printer.height;
+  // Several printers share one build volume; the saved model name decides between them.
+  const matchingPrinter = printers.find(printer => printer.name === s.printer_model && sizeMatches(printer)) ?? (s.printer_model ? undefined : printers.find(sizeMatches));
   const usingCustomPrinter = customPrinter || !matchingPrinter;
   const grid = layout(s);
   const tileWidth = s.width / grid.columns, tileHeight = s.height / grid.rows;
@@ -174,16 +185,16 @@ export default function SettingsPanel({
   const frameInvalid = s.frame_mode !== "none" && (2 * s.frame_width >= Math.min(s.width, s.height) - 20 || s.frame_width < frameMinimum || s.corner_radius > s.frame_width || s.inner_bevel + s.outer_bevel >= s.frame_width || Math.max(s.inner_bevel, s.outer_bevel) >= frameTotalHeight);
   function change(values: Partial<Settings>) {
     values = { ...values };
-    if (values.printer_width !== undefined || values.printer_height !== undefined || values.printer_z !== undefined) setCustomPrinter(true);
+    if (values.printer_width !== undefined || values.printer_height !== undefined || values.printer_z !== undefined) { setCustomPrinter(true); values.printer_model = ""; }
     if ((values.frame_mode ?? s.frame_mode) === "separate" && (values.joints ?? s.joints) && (values.frame_width ?? s.frame_width) < 6)
       values.frame_width = 6;
     if (lockedRatio && (values.width !== undefined || values.height !== undefined)) {
       if (values.width !== undefined) {
-        const width = Math.min(2000, Math.max(60, 60 * lockedRatio, Math.min(values.width, 2000 * lockedRatio)));
-        values = { ...values, width, height: Math.max(60, Math.min(2000, Math.round(width / lockedRatio))) };
+        const width = Math.min(2000, Math.max(30, 30 * lockedRatio, Math.min(values.width, 2000 * lockedRatio)));
+        values = { ...values, width, height: Math.max(30, Math.min(2000, Math.round(width / lockedRatio))) };
       } else if (values.height !== undefined) {
-        const height = Math.min(2000, Math.max(60, 60 / lockedRatio, Math.min(values.height, 2000 / lockedRatio)));
-        values = { ...values, height, width: Math.max(60, Math.min(2000, Math.round(height * lockedRatio))) };
+        const height = Math.min(2000, Math.max(30, 30 / lockedRatio, Math.min(values.height, 2000 / lockedRatio)));
+        values = { ...values, height, width: Math.max(30, Math.min(2000, Math.round(height * lockedRatio))) };
       }
     }
     if (values.frame_width !== undefined) {
@@ -258,7 +269,14 @@ export default function SettingsPanel({
   const border = s.frame_mode === "none" ? 0 : 2 * s.frame_width;
   const mapSize = `${(s.width - border).toFixed(1)} × ${(s.height - border).toFixed(1)} mm`;
   if (section === "location") return null;
-  if (section === "frame" && s.map_format!=="artwork") return (<FeatureGroup heading="Frame & caption" icon={<Frame size={18}/>} checked={s.frame_mode !== "none"} onChange={enabled => onChange({ frame_mode: enabled ? "separate" : "none", front_caption: false })} description={collection(s) ? "Removable inserts & expandable holders" : "Puzzle tray & surround"}>
+  const plaqueSection = <Section heading="Plaque" icon={<Frame size={18}/>} description={s.plaque ? `${s.plaque_title?.trim() || s.name} · ${s.plaque_width ?? 90} mm` : "Add a nameplate to your print"}><PlaqueEditor settings={s} onChange={onChange}/></Section>;
+  if (section === "frame" && shapedArtwork(s)) return <><Section open heading="Shaped border" icon={<Frame size={18}/>} description={s.frame_mode==='none'?'Open edge':`${s.frame_width} mm · ${s.frame_mode==='separate'?'Separate border':'Built-in border'}`}>
+    <div className="control-block">{select("frame_mode","Border",[["none","No border"],["integrated","Built into the artwork"],["separate","Separate matching border"]])}
+    {s.frame_mode!=="none"&&<><div className="two-col">{number("frame_width","Border width · mm",4,40,.5)}{number("frame_height","Border rise · mm",1,60,.5)}{number("frame_depth","Border base depth · mm",3,20,.5)}</div>
+    {s.frame_mode==='separate'&&number("tolerance","Insert clearance · mm",.05,.5,.05)}<p className="hint">The border follows the outside edge and letter openings. Separate borders have a supported seat for the removable map insert. Print the fit before the full design.</p></>}
+    </div></Section>{plaqueSection}</>;
+  if (section === "frame" && s.map_format!=="artwork") return (<><Section heading="Plaque" icon={<Frame size={18}/>} description={s.plaque ? `${s.plaque_title?.trim() || s.name} · ${s.plaque_width ?? 90} mm` : "Add a nameplate to your print"}><PlaqueEditor settings={s} onChange={onChange}/></Section><FeatureGroup heading="Frame & caption" icon={<Frame size={18}/>} checked={s.frame_mode !== "none"} onChange={enabled => onChange({ frame_mode: enabled ? "separate" : "none", front_caption: false })} description={collection(s) ? "Removable inserts & expandable holders" : "Puzzle tray & surround"}>
+    {s.frame_mode!=="none"&&<WallMountEditor settings={s} onChange={onChange}/>}
     <MountEditor settings={s} onChange={onChange}/>
     <div className="control-block">
       {select("frame_mode","Frame",[["separate",s.map_format==='hexagons'?"Matching hexagon holders":"Supporting tray & surround"],["none","No frame / holders"]])}
@@ -270,8 +288,10 @@ export default function SettingsPanel({
       </>}
       <p className="hint" role="status">Overall size: {s.width.toFixed(1)} × {s.height.toFixed(1)} mm. Holders have flat supported bases. Test the fit before printing the full set.</p>
     </div>
-  </FeatureGroup>);
+  </FeatureGroup></>);
   if (section === "frame") return (<>
+      <Section heading="Wall mounting" icon={<Frame size={18}/>} description={s.hang_mode==="keyholes"?"Keyhole slots in the back":"No wall fixing"}><WallMountEditor settings={s} onChange={onChange}/></Section>
+      <Section heading="Plaque" icon={<Frame size={18}/>} description={s.plaque ? `${s.plaque_title?.trim() || s.name} · ${s.plaque_width ?? 90} mm` : "Add a nameplate to your print"}><PlaqueEditor settings={s} onChange={onChange}/></Section>
       {s.map_format!=="artwork"&&<MountEditor settings={s} onChange={onChange}/>}
       <FeatureGroup heading="Frame & caption" icon={<Frame size={18} />} checked={s.frame_mode !== "none"} onChange={enabled => onChange({ frame_mode: enabled ? lastFrame.current : "none", ...(enabled ? {} : { front_caption: false }) })} description={`${s.frame_mode === "separate" ? "Separate" : "Built-in"} · ${s.frame_width} mm border${s.front_caption ? " · Caption on" : ""}`}>
       <p className="hint" role="status">Finished artwork: {s.width} × {s.height} mm, including the frame. Map area: {mapSize}.</p>
@@ -309,8 +329,7 @@ export default function SettingsPanel({
             </div>
             <p className="hint">{s.frame_mode === "separate" ? "Separate frames have a 2 mm retaining lip underneath. Its 45° seat matches the insert’s underside chamfer, keeping the printed edge supported. Leave the final frame section loose to slide the insert in, or lower it into a one-piece frame." : "The border forms part of the outer map tiles."} {s.frame_contour === "flat" ? `Total frame height: ${frameTotalHeight.toFixed(1)} mm.` : s.frame_contour === "minimum" ? `Minimum frame height: ${frameTotalHeight.toFixed(1)} mm.` : "Frame height is calculated from the land when generated."}</p>
             {s.frame_mode === "separate" && <div className="frame-fit-summary"><Frame size={18} aria-hidden="true" /><span><strong>Supported slide-in insert</strong><small>2 mm lip · 45° seat · {s.tolerance.toFixed(2)} mm side clearance</small></span></div>}
-            {toggle("front_caption", "Name & coordinates on frame")}
-            {s.front_caption && <p className="caption-preview"><strong>{s.name || "Your artwork name"}</strong><small>{Math.abs((s.bounds.north + s.bounds.south) / 2).toFixed(4)}° {(s.bounds.north + s.bounds.south) / 2 >= 0 ? "N" : "S"} · {Math.abs(centreLongitude(s.bounds)).toFixed(4)}° {centreLongitude(s.bounds) >= 0 ? "E" : "W"}</small><span>Printed on the bottom border</span></p>}
+            <CaptionEditor settings={s} onChange={onChange}/>
             <details className="advanced">
               <summary>Frame dimensions & profile</summary>
               <div className="two-col">
@@ -340,16 +359,13 @@ export default function SettingsPanel({
   if (section === "format" || section === "make")
     return (
       <>
+        {section === "format" && <ShapePicker settings={s} onChange={onChange}/>}
         {section === "format" && <FormatEditor settings={s} onChange={onChange}/>}
         {section === "format" && !collection(s) && <div className="control-block">
-          <p className="hint">Choose the finished size, including your frame. The map selection updates with the proportions.</p>
+          <p className="hint">Choose a size for this shape. The map selection updates with its proportions.</p>
           <h3>Finished artwork size</h3>
           <div className="size-presets" role="group" aria-label="Artwork sizes">
-            {[
-              [200, 200, "Small"],
-              [400, 300, "Medium"],
-              [600, 400, "Large"],
-            ].map(([width, height, label]) => (
+            {["Small","Medium","Large"].map((label,i) => { const {width,height}=shapeSize(s,[200,400,600][i]); return (
               <button
                 key={label}
                 type="button"
@@ -359,20 +375,19 @@ export default function SettingsPanel({
                   onChange({ width: Number(width), height: Number(height) });
                 }}
               >
-                <span
-                  className="size-shape"
-                  style={{ aspectRatio: `${width} / ${height}` }}
-                />
+                <ShapeOutline className="size-shape" settings={{...s,width:Number(width),height:Number(height)}}/>
                 <strong>{label}</strong>
                 <small>
                   {width} × {height}
                 </small>
               </button>
-            ))}
+            ); })}
           </div>
+          <p className="hint">Small, Medium and Large use a 200, 400 or 600 mm longest edge and retain the selected shape’s proportions.</p>
+          <details className="advanced"><summary>Custom size</summary>
           <div className="two-col">
-            {number("width", "Width · mm", 60, 2000)}
-            {number("height", "Height · mm", 60, 2000)}
+            {number("width", "Width · mm", 30, 2000)}
+            {number("height", "Height · mm", 30, 2000)}
           </div>
           <div className="dimension-tools">
             <Toggle label="Keep proportions" checked={lockedRatio !== null}
@@ -382,8 +397,9 @@ export default function SettingsPanel({
               if (lockedRatio) setLockedRatio(1 / lockedRatio);
             }}><RotateCw size={14} />Rotate size</button>
           </div>
-          <p className="hint">Outer dimensions, including the frame. {lockedRatio ? "Changing one dimension also changes the other." : "Set any size from 60 to 2,000 mm."}</p>
-          <p className="hint">Map area: {mapSize} with your current frame.</p>
+          <p className="hint">Outer dimensions, including the frame. {lockedRatio ? "Changing one dimension also changes the other." : "Set custom width and height from 30 to 2,000 mm; unlocked dimensions can stretch the shape."}</p>
+          </details>
+          <p className="hint">{s.width} × {s.height} mm overall{shapedArtwork(s) && s.frame_mode!=="none" ? ` · ${s.frame_width} mm shaped border` : ` · Map area: ${mapSize}`}.</p>
         </div>}
         {section === "make" && <>
         <Section open heading="Your printer" icon={<Printer size={18} />} description={`${s.printer_width} × ${s.printer_height} mm plate · ${s.nozzle} mm nozzle`}>
@@ -391,10 +407,10 @@ export default function SettingsPanel({
             <Printer size={23} />
             <span>
               <strong>
-                {s.printer_width} × {s.printer_height} mm build plate
+                {matchingPrinter && !usingCustomPrinter ? matchingPrinter.name : `${s.printer_width} × ${s.printer_height} mm build plate`}
               </strong>
               <small>
-                {s.printer_z} mm height · {s.nozzle} mm nozzle
+                {s.printer_width} × {s.printer_height} × {s.printer_z} mm · {s.nozzle} mm nozzle
               </small>
             </span>
           </div>
@@ -403,16 +419,21 @@ export default function SettingsPanel({
                 aria-pressed={!usingCustomPrinter && matchingPrinter === printer}
                 onClick={() => {
                   setCustomPrinter(false);
-                  onChange({ printer_width: printer.width, printer_height: printer.depth, printer_z: printer.height });
+                  onChange({ printer_model: printer.name, printer_width: printer.width, printer_height: printer.depth, printer_z: printer.height });
                 }}>
                 <strong>{printer.name}</strong><small>{printer.width} × {printer.depth} × {printer.height} mm</small>
               </button>)}
               <button type="button" aria-pressed={usingCustomPrinter} onClick={() => {
                 setCustomPrinter(true);
+                onChange({ printer_model: "" });
                 if (printerDetails.current) printerDetails.current.open = true;
               }}><strong>Custom build plate</strong><small>Enter your own dimensions</small></button>
             </div>
-            <p className="hint">Choose a matching printer or enter a custom build volume. Sizes are width × depth × height; plate margins are kept.</p>
+            <h3>Nozzle</h3>
+            <div className="segmented" role="group" aria-label="Nozzle diameter">
+              {nozzles.map(nozzle => <button type="button" key={nozzle} aria-pressed={s.nozzle === nozzle} onClick={() => onChange({ nozzle })}>{nozzle} mm</button>)}
+            </div>
+            <p className="hint">Pick the printer and nozzle you will actually print with. Small buildings, roads and lettering are sized for this nozzle, and Bambu Lab printers get a ready-to-slice project with the matching profile.</p>
           <details ref={printerDetails} className="advanced" open={usingCustomPrinter}>
             <summary>Change printer settings</summary>
             <div className="two-col">

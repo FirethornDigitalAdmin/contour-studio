@@ -34,16 +34,16 @@
   {
     "kind": "jigsaw",
     "place": "Keswick",
-    "source": "/data/projects/42b19cab-245d-4832-b494-cc1eec77c6dc/preview.glb",
+    "source": "/data/site-examples/jigsaw/preview.glb",
     "ready": true,
-    "meshes": 78,
-    "triangles": 1093726,
+    "meshes": 83,
+    "triangles": 1488832,
     "sizeMm": [
-      200.575,
-      15.616647720336953,
-      200
+      220.675,
+      15.48683500289918,
+      220.675
     ],
-    "sha256": "966bf1eb7559272cf2c4cb7a6b61f221634b4ddf7709a830f807d16d3e5a0a6f",
+    "sha256": "c2586d367ea71d205048ecb02244f4e288d76ed424cb341a3421e9ab5fb8894f",
     "image": "jigsaw.webp",
     "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
   },
@@ -61,6 +61,39 @@
     ],
     "sha256": "977e425abb4e68ec566e8a5aebf14ea8a60fae56238ed24b0252afd686b9d8ed",
     "image": "places.webp",
+    "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
+  },
+  {
+    "kind": "mounting",
+    "place": "Keswick",
+    "source": "/data/site-examples/mounting/preview.glb",
+    "ready": true,
+    "meshes": 10,
+    "triangles": 291896,
+    "sizeMm": [
+      212,
+      113.77215957641606,
+      212
+    ],
+    "sha256": "9c8734ef89f4f57e1e14726d3f640d85656c8267f14681e667662a01f5116519",
+    "image": "mounting.webp",
+    "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
+  },
+  {
+    "kind": "lettering",
+    "place": "Keswick",
+    "markers": "#E9DECA",
+    "source": "/data/site-examples/lettering/preview.glb",
+    "ready": true,
+    "meshes": 10,
+    "triangles": 1055950,
+    "sizeMm": [
+      200,
+      68.6110229492188,
+      258.4305763244629
+    ],
+    "sha256": "813e95fddb1222baad12515910b78b9859dc206f87630d62060c16ce35a3bd84",
+    "image": "lettering.webp",
     "attribution": "Map features © OpenStreetMap contributors (ODbL); elevation Mapzen / AWS Terrain Tiles."
   }
 ]

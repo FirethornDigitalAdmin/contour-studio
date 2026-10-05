@@ -54,7 +54,7 @@ Check your slice preview and print the fit coupon before printing the full artwo
 
 **It asks for Node.js:** use **Contour-Studio-local.zip** rather than the source ZIP, or follow the source setup in README.md.
 
-**Port 8765 is in use:** another local-browser copy may be running. Open http://127.0.0.1:8765 or close the other copy. The desktop app uses port 8767.
+**Port 8765 is in use:** another local-browser copy may be running. Open http://127.0.0.1:8765 or close the other copy. The desktop app automatically chooses an available local connection if its preferred port is busy or blocked, and remembers it for future launches. If it reports that Contour Studio is already running, switch to the existing app window.
 
 **Generation failed:** keep your settings, read the message and retry. Geographic services can be busy; a smaller selection or lower surface quality can reduce data and memory requirements.
 

@@ -138,3 +138,34 @@ for(const wall_mode of ['continuous','places'])for(const map_format of ['mini_ti
  assert.deepEqual(sparse.map_tiles[0],original);
 }
 console.log('PASS: separate ongoing journeys, square/hex shapes, sparse one-tile additions preserve authored locations and continuous-map geographic scale/terrain reference.');
+{
+ const {removeWallTile,wallAdditions}=load('formats');
+ const mercator=lat=>Math.log(Math.tan(Math.PI/4+lat*Math.PI/360));
+ for(const map_format of ['mini_tiles','hexagons']) {
+  const baseline={...defaults,wall_mode:'legacy',wall_positions:[],elevation_reference:null,wall_scale:null};
+  const first={...baseline,...configureProject(baseline,'modular','continuous',true,map_format),elevation_reference:100,wall_scale:.01};
+  const scale=b=>[longitudeSpan(b),mercator(b.north)-mercator(b.south)];
+  const perMm=(d)=>[scale(d.bounds)[0]/(d.width-2*d.frame_width),scale(d.bounds)[1]/(d.height-2*d.frame_width)];
+  assert(wallAdditions(first).some(p=>p[0]===-1),'a tile can be added to the south');
+  // South: the northern edge stays put, the map grows downwards at the same scale.
+  const south={...first,...resizeCollection(first,addWallTile(first,[-1,0]))};
+  assert.deepEqual(wallPositions(south),[[1,0],[0,0]],'the first tile moves up a row; the new one is south of it');
+  assert(Math.abs(south.bounds.north-first.bounds.north)<1e-9&&south.bounds.south<first.bounds.south);
+  assert(Math.abs(perMm(south)[1]-perMm(first)[1])<1e-12&&Math.abs(south.bounds.west-first.bounds.west)<1e-9);
+  assert.equal(south.elevation_reference,100);assert.equal(south.wall_scale,.01);
+  assert.equal(south.map_tiles[0].id,first.map_tiles[0].id,'the printed tile keeps its identity');
+  if(map_format==='mini_tiles') {
+   const west={...first,...resizeCollection(first,addWallTile(first,[0,-1]))};
+   assert(Math.abs(west.bounds.east-first.bounds.east)<1e-9&&west.bounds.west<first.bounds.west);
+   assert(Math.abs(perMm(west)[0]-perMm(first)[0])<1e-12);
+  } else assert(!wallAdditions(first).some(p=>p[1]<0),'hexagon walls keep their column stagger');
+  // Removing the added tile restores the original map exactly.
+  const back={...south,...resizeCollection(south,removeWallTile(south,south.map_tiles.findIndex(t=>t.id!==first.map_tiles[0].id)))};
+  assert.equal(back.map_tiles.length,1);assert.deepEqual(wallPositions(back),[[0,0]]);
+  for(const edge of ['west','south','east','north'])assert(Math.abs(back.bounds[edge]-first.bounds[edge])<1e-9,edge);
+  assert.equal(back.width,first.width);assert.equal(back.height,first.height);assert.equal(back.wall_scale,.01);
+  assert.deepEqual(removeWallTile(back,0),{},'the last tile cannot be removed');
+  assert.deepEqual(validateDesign(south),[]);assert.deepEqual(validateDesign(back),[]);
+ }
+ console.log('PASS: walls grow south and west at the printed scale, and removing a tile restores the map.');
+}

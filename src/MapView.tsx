@@ -1,3 +1,4 @@
+import { ShapeOutline, shapedArtwork } from "./artworkShapes";
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -39,6 +40,8 @@ type MapProps = {
   placingMarker: string | null;
   onPlaceMarker: (lon: number, lat: number) => void;
   onCancelMarker: () => void;
+  /** Outlines of wall tiles inside the selection, as fractions of its width and height from the top-left. */
+  wallTiles?: number[][][];
 };
 
 export default function MapView(props: MapProps) {
@@ -51,7 +54,7 @@ export default function MapView(props: MapProps) {
     onPlaceMarker={(lon,lat)=>props.onPlaceMarker(wrapLongitude(lon),lat)} />;
 }
 
-function StandardMapView({ settings, ratioLocked: locked, onRatioLockedChange, editable=true, onBounds, placingMarker, onPlaceMarker, onCancelMarker }: MapProps) {
+function StandardMapView({ settings, ratioLocked: locked, onRatioLockedChange, editable=true, onBounds, placingMarker, onPlaceMarker, onCancelMarker, wallTiles }: MapProps) {
   const host = useRef<HTMLDivElement>(null),
     markerLayer = useRef<HTMLDivElement>(null),
     overlay = useRef<HTMLDivElement>(null),
@@ -227,13 +230,14 @@ function StandardMapView({ settings, ratioLocked: locked, onRatioLockedChange, e
       selection!.style.transform = `translate3d(${r.left}px,${r.top}px,0)`;
       selection!.style.width = `${width}px`;
       selection!.style.height = `${height}px`;
+      selection!.classList.toggle("shaped", shapedArtwork(s));
       selection!.classList.toggle("compact", width < 180 || height < 100);
       const lat = (b.north + b.south) / 2;
       if (sizeLabel.current)
         sizeLabel.current.textContent = `${((b.east - b.west) * 111.32 * Math.cos((lat * Math.PI) / 180)).toFixed(2)} × ${((b.north - b.south) * 111.32).toFixed(2)} km`;
       // Only rebuild tile guides when the physical layout changes, never during a drag.
       const g = layout(s),
-        fw = s.frame_mode === "none" ? 0 : s.frame_width;
+        fw = s.frame_mode === "none" || shapedArtwork(s) ? 0 : s.frame_width;
       const key = [g.columns, g.rows, s.width, s.height, fw].join(":");
       if (grid.current && key !== gridKey) {
         gridKey = key;
@@ -526,7 +530,9 @@ function StandardMapView({ settings, ratioLocked: locked, onRatioLockedChange, e
         data-mode={placingMarker ? "marker" : editable ? mode : "pan"}
       >
         <div ref={box} className="selection-box" hidden>
+          <ShapeOutline settings={settings} className="selection-shape"/>
           <div ref={grid} className="selection-grid" aria-hidden="true" />
+          {!!wallTiles?.length && <svg className="selection-tiles" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">{wallTiles.map((tile, index) => <polygon key={index} points={tile.map(point => point.join(",")).join(" ")} vectorEffect="non-scaling-stroke" />)}</svg>}
           <button
             className="selection-move"
             aria-label="Move selected area"

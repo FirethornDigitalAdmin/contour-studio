@@ -12,7 +12,7 @@ import {
   Palette,
 } from "lucide-react";
 import { useEffect, useState, useImperativeHandle, type Ref } from "react";
-import { api, type Model, type Part } from "./types";
+import { api, type BambuProfile, type Model, type Part } from "./types";
 import "./preview.css";
 export default function PrintPackage({
   jobId,
@@ -36,9 +36,10 @@ export default function PrintPackage({
     if (bambuBusy || stale) return;
     setBambuBusy(true); setBambuMessage("");
     try {
-      const result = await api<{ files: string[]; plate_count: number }>(`/projects/${encodeURIComponent(jobId)}/bambu?launch=${launch}`, {});
+      const result = await api<{ files: string[]; plate_count: number; profile?: BambuProfile }>(`/projects/${encodeURIComponent(jobId)}/bambu?launch=${launch}`, {});
       setBambuFiles(result.files);
-      setBambuMessage(launch ? `Sent ${result.plate_count} plates to Bambu Studio. Select your printer and filaments, check the purge tower space, then Slice all plates.` : `${result.plate_count} plates prepared. Download the project below.`);
+      const profile = result.profile?.printer ? `Set up for ${result.profile.printer} at ${result.profile.layer_height} mm layers with ${result.profile.filament}. Swap in your own filaments` : "No matching Bambu Lab profile was found, so select your printer and filaments";
+      setBambuMessage(launch ? `Sent ${result.plate_count} plates to Bambu Studio. ${profile}, check the purge tower space, then Slice all plates.` : `${result.plate_count} plates prepared. Download the project below.`);
     } catch (error) {
       setBambuMessage(error instanceof Error ? error.message : "Could not open Bambu Studio.");
       if (!bambuFiles.length && launch) {
@@ -92,7 +93,7 @@ export default function PrintPackage({
         </a>
         </div>
       </div>
-      <p className="package-help">Open all pieces on prepared plates, with colours and required quantities included. Choose your printer and filament profiles in Bambu Studio, check purge tower space, then slice all plates.{stale && " Rebuild to include your latest changes."}</p>
+      <p className="package-help">Open all pieces on prepared plates, with colours and required quantities included. {model.bambu?.profile?.printer ? `The project is set up for ${model.bambu.profile.printer} (${model.bambu.profile.process}).` : `Designed for a ${model.settings.nozzle} mm nozzle. Choose a Bambu Lab printer under Your printer for a ready-made profile, or select your printer in the slicer.`} Check your filaments and purge tower space, then slice all plates.{stale && " Rebuild to include your latest changes."}</p>
       {bambuMessage && <p className="package-help" role="status">{bambuMessage}</p>}
       <div className="bambu-downloads">{bambuFiles.map((file, index) => <a key={file} download href={fileUrl(file)}><Download size={14} />Download plate project{bambuFiles.length > 1 ? ` ${index + 1} of ${bambuFiles.length}` : ""}</a>)}{!bambuFiles.length && <button type="button" disabled={bambuBusy || stale} onClick={() => openBambu(false)}>Prepare downloadable plate project</button>}</div>
       <div className="package-overview">

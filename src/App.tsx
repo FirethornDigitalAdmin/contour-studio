@@ -1,6 +1,8 @@
+import { shapedArtwork } from "./artworkShapes";
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
   Layers,
+  Boxes,
   Map,
   Box,
   Download,
@@ -39,7 +41,7 @@ import { repository, releaseUrl } from "./distribution";
 import { api, hostedWorkspace, starterPlaces } from "./hosted";
 import { ApiError, layout, type Settings, type Job } from "./types";
 import { Field, NumberField, Section } from "./Controls";
-import { collection, activeMapSettings, continuousWall, addWallTile } from "./formats";
+import { collection, activeMapSettings, continuousWall, addWallTile, removeWallTile, collectionCells } from "./formats";
 import { TilePicker } from "./FormatEditor";
 import PuzzleLayout from "./PuzzleLayout";
 import CollectionLayout from "./CollectionLayout";
@@ -53,6 +55,7 @@ import { configureProject, projectNames, projectLabel, projectType, readDesigns,
 import "./project-workspace.css";
 import { restoreDraft, sameDesign, validateDesign } from "./validation";
 import { selectionAreaKm2, MAX_BUILDING_AREA_KM2, validBounds, insideBounds, centreLongitude, placeBounds, artworkRatio, fitArtworkBounds } from "./world";
+const AssetsPage = lazy(() => import("./AssetsPage"));
 const MapView = lazy(() => import("./MapView"));
 const TraceEditor = lazy(() => import("./TraceEditor"));
 const Preview = lazy(() => import("./Preview"));
@@ -73,6 +76,7 @@ export default function App() {
   const [step, setStep] = useState(0);
   const [view, setView] = useState<View>("map");
   const [home, setHome] = useState(true);
+  const [assets, setAssets] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
   const [designs, setDesigns] = useState(readDesigns);
   const [deletedProjects, setDeletedProjects] = useState(readDeletedProjects);
@@ -322,7 +326,7 @@ export default function App() {
   const outsideMarkers = s.markers.some(m => !insideBounds(m.lon,m.lat,s.bounds));
 
   const geometryStale = !!model && (
-    model.model.geometry_revision !== "map-formats-v14" ||
+    model.model.geometry_revision !== "map-formats-v15" ||
     (model.settings.map_format === "artwork" && model.settings.frame_mode === "separate" && model.model.frame_fit?.assembly !== "chamfered-insert")
   );
   const stale = !!model && (
@@ -340,7 +344,9 @@ export default function App() {
   const mapSettings=activeMapSettings(s);
 
   function changeSettings(values: Partial<Settings>) {
-    const next = { ...s, ...values };
+    let next = { ...s, ...values };
+    if (shapedArtwork(next)) values = { ...values, joints:false, labels:false, front_caption:false, frame_contour:"flat", inner_bevel:0, outer_bevel:0, corner_radius:0 };
+    next = { ...s, ...values };
     // Store dimensions and their new crop together so undo/redo restores both.
     if (mapRatioLocked && artworkRatio(next) !== artworkRatio(s)) {
       patch({ ...values, bounds: fitArtworkBounds(next.bounds, artworkRatio(next)) });
@@ -638,15 +644,16 @@ export default function App() {
   }
   function showProjects() {
     document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close());
-    rememberDesign(); setNavigation("studio"); setHome(true); void refreshProjects();
+    rememberDesign(); setAssets(false); setNavigation("studio"); setHome(true); void refreshProjects();
   }
   const minutes = Math.floor(elapsed / 60),
     seconds = elapsed % 60;
   return (
     <div className="app-shell">
       <nav className="app-navigation" aria-label="Main navigation">
-        <button className={`app-nav-item${home ? " active" : ""}`} aria-label="Projects home" aria-current={home ? "page" : undefined} title="Projects" disabled={busy} onClick={showProjects}><BrandMark size={30} /><span>Projects</span></button>
-        <button className={`app-nav-item${!home ? " active" : ""}`} aria-label="Current project" aria-current={!home ? "page" : undefined} title={hasDraft ? s.name : "Create a project first"} disabled={!hasDraft || !!opening} onClick={() => { document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close()); setHome(false); }}><Map size={23} /><span>Current<br />project</span></button>
+        <button className={`app-nav-item${home && !assets ? " active" : ""}`} aria-label="Projects home" aria-current={home && !assets ? "page" : undefined} title="Projects" disabled={busy} onClick={showProjects}><BrandMark size={30} /><span>Projects</span></button>
+        <button className={`app-nav-item${!home && !assets ? " active" : ""}`} aria-label="Current project" aria-current={!home && !assets ? "page" : undefined} title={hasDraft ? s.name : "Create a project first"} disabled={!hasDraft || !!opening} onClick={() => { document.querySelectorAll<HTMLDialogElement>("dialog[open]").forEach(dialog => dialog.close()); setAssets(false); setNavigation("studio"); setHome(false); }}><Map size={23} /><span>Current<br />project</span></button>
+        <button className={`app-nav-item${assets ? " active" : ""}`} aria-label="Assets" aria-current={assets ? "page" : undefined} onClick={() => { rememberDesign(); setAssets(true); setNavigation("studio"); }}><Boxes size={23}/><span>Assets</span></button>
         <button ref={helpButton} className={`app-nav-item app-nav-help${navigation === "help" ? " active" : ""}`} aria-label="Help" aria-haspopup="dialog" onClick={() => { setNavigation("help"); helpDialog.current?.showModal(); }}><CircleHelp size={23} /><span>Help</span></button>
         <button ref={settingsButton} className={`app-nav-item${navigation === "settings" ? " active" : ""}`} aria-label="Settings" aria-haspopup="dialog" title="Settings" onClick={() => { setNavigation("settings"); settingsDialog.current?.showModal(); }}><SettingsIcon size={23} /><span>Settings</span></button>
       </nav>
@@ -666,7 +673,7 @@ export default function App() {
         </a>
         <button ref={creatorCredit} className="app-creator-credit" aria-label="About Louis Goldsbrough" aria-haspopup="dialog" onClick={() => creatorDialog.current?.showModal()}>by Louis Goldsbrough</button>
         </div>
-        {!home && <nav className="stepper" aria-label="Edit your artwork">
+        {!home && !assets && <nav className="stepper" aria-label="Edit your artwork">
           {steps.map((item, i) => (
             <button
               key={item.name}
@@ -685,10 +692,10 @@ export default function App() {
             </button>
           ))}
         </nav>}
-        {home && <span className="start-header-note">Your free map art studio</span>}
+        {(home || assets) && <span className="start-header-note">{assets ? "Reusable print accessories" : "Your free map art studio"}</span>}
       </header>
       {hostedWorkspace && <div className="hosting-note"><Monitor size={15} /><span>Design here. Generate and print on your computer.</span><button onClick={() => helpDialog.current?.showModal()}>How it works <ArrowRight size={14} /></button></div>}
-      {home ? <ProjectStart deletedProjects={deletedProjects} onDelete={deleteLibraryProject} onRestore={restoreLibraryProject} designs={designs} projects={projects} loading={projectsLoading} error={projectsError} hasDraft={hasDraft} busy={!!busy || !!opening} onNew={() => showChooser("new")} onResume={() => setHome(false)} onOpenDesign={(design, print) => void openDesign(design, print)} onOpenProject={(id, print) => void openProject(id, print)} onRefresh={() => void refreshProjects()} onImport={() => importInput.current?.click()} /> : <>
+      {assets ? <Suspense fallback={<p role="status" className="entry-loading">Opening your assets…</p>}><AssetsPage/></Suspense> : home ? <ProjectStart deletedProjects={deletedProjects} onDelete={deleteLibraryProject} onRestore={restoreLibraryProject} designs={designs} projects={projects} loading={projectsLoading} error={projectsError} hasDraft={hasDraft} busy={!!busy || !!opening} onNew={() => showChooser("new")} onResume={() => setHome(false)} onOpenDesign={(design, print) => void openDesign(design, print)} onOpenProject={(id, print) => void openProject(id, print)} onRefresh={() => void refreshProjects()} onImport={() => importInput.current?.click()} /> : <>
       <div className="workspace" id="workspace" data-step={active.name.toLowerCase()}>
         <aside
           className="sidebar"
@@ -707,7 +714,7 @@ export default function App() {
           {step === 0 && (
             <div className="place-panel">
               <TilePicker settings={s} onChange={changeSettings}/>
-              {collection(s)&&s.wall_mode&&s.wall_mode!=="legacy"&&<div className="wall-grow-actions"><button type="button" disabled={busy} onClick={()=>setView("layout")}><Plus size={16}/>Add a tile</button><p className="hint">Choose an adjoining + in the artwork layout. This project stays saved as you add tiles.</p></div>}
+              {collection(s)&&s.wall_mode&&s.wall_mode!=="legacy"&&<div className="control-block"><div className="wall-grow-actions"><button type="button" disabled={busy} onClick={()=>setView("layout")}><Plus size={16}/>Add or remove tiles</button></div><p className="hint">Opens the wall layout. Add a tile on any side with +; your project stays saved as it grows.</p></div>}
               <form onSubmit={search} className="location-block">
                 <label className="input-label" htmlFor="location-search">
                   Search for a place
@@ -1098,6 +1105,7 @@ export default function App() {
               ) : view === "map" ? (
                 <MapView
                   settings={mapSettings}
+                  wallTiles={continuousWall(s) ? collectionCells(s).map(cell => cell.points.map(([x, y]) => [(x - s.frame_width) / (s.width - 2 * s.frame_width), 1 - (y - s.frame_width) / (s.height - 2 * s.frame_width)])) : undefined}
                   ratioLocked={mapRatioLocked}
                   onRatioLockedChange={setMapRatioLocked}
                   editable={!busy && step === 0}
@@ -1130,7 +1138,7 @@ export default function App() {
                   onCancelMarker={() => setPlacingMarker(null)}
                 />
               ) : view === "layout" ? (
-                collection(s) ? <CollectionLayout settings={s} onAdd={position=>{changeSettings(addWallTile(s,position));go(0);}} onGrow={direction=>changeSettings(direction === "column" ? {collection_columns:s.collection_columns+1} : {collection_rows:s.collection_rows+1})} onTile={i=>{if(continuousWall(s)){patch({active_tile:i});go(0);return;}const t=s.map_tiles[i];patch({active_tile:i,name:t.name,bounds:t.bounds,markers:t.markers,trails:t.trails,custom_buildings:t.custom_buildings??[],reference_image:t.reference_image??null});go(0);}}/> : s.map_format==="jigsaw" ? <PuzzleLayout settings={s}/> : <LayoutView settings={s} fits={fits} />
+                collection(s) ? <CollectionLayout settings={s} onRemove={index=>changeSettings(removeWallTile(s,index))} onAdd={position=>{changeSettings(addWallTile(s,position));go(0);}} onGrow={direction=>changeSettings(direction === "column" ? {collection_columns:s.collection_columns+1} : {collection_rows:s.collection_rows+1})} onTile={i=>{if(continuousWall(s)){patch({active_tile:i});go(0);return;}const t=s.map_tiles[i];patch({active_tile:i,name:t.name,bounds:t.bounds,markers:t.markers,trails:t.trails,custom_buildings:t.custom_buildings??[],reference_image:t.reference_image??null});go(0);}}/> : s.map_format==="jigsaw" ? <PuzzleLayout settings={s}/> : <LayoutView settings={s} fits={fits} />
               ) : model && job ? (
                 <Preview
                   id={job.id}

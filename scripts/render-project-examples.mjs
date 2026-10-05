@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 const require=createRequire(process.env.PLAYWRIGHT_MODULE+'/package.json');
 const {chromium}=require('playwright'),sharp=require('sharp');
 const existing=JSON.parse(await readFile('public/project-examples/manifest.json','utf8'));
-const examples=existing.map((example,index)=>({kind:example.kind,place:example.place,source:process.argv[index+2]||example.source.replace(/^\//,'')}));
+const examples=existing.map((example,index)=>({kind:example.kind,place:example.place,...(example.markers?{markers:example.markers}:{}),source:process.argv[index+2]||example.source.replace(/^\//,'')}));
 const root=resolve('.'),types={'.html':'text/html','.js':'text/javascript','.glb':'model/gltf-binary'};
 const server=createServer(async(req,res)=>{
  const file=resolve(root,'.'+decodeURIComponent(new URL(req.url,'http://localhost').pathname));
@@ -23,7 +23,7 @@ try{
  for(const example of examples){
   const page=await browser.newPage({viewport:{width:960,height:700},deviceScaleFactor:2});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(`http://127.0.0.1:5189/scripts/render-project-examples.html?${new URLSearchParams({kind:example.kind,source:'/'+example.source})}`);
+  await page.goto(`http://127.0.0.1:5189/scripts/render-project-examples.html?${new URLSearchParams({kind:example.kind,source:'/'+example.source,...(example.markers?{markers:example.markers}:{})})}`);
   await page.waitForFunction(()=>window.modelRender?.ready,{timeout:60000});
   if(errors.length)throw new Error(errors.join('\n'));
   const png=await page.screenshot();

@@ -4,7 +4,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = ['pytest.ini', 'README.md', 'UI-REVIEW.md', 'VERIFICATION.md', 'START-HERE.md', 'DESKTOP.md', 'HOSTING.md', 'LICENSE', '.gitignore', 'start.py', 'start.command',
+FILES = ['pytest.ini', 'README.md', 'UI-REVIEW.md', 'VERIFICATION.md', 'START-HERE.md', 'DESKTOP.md', 'HOSTING.md', 'CHANGES-2026-10-05.md', 'LAND-HEIGHT-AND-FRAME.md', 'LANDSCAPE-CUSTOMISATION.md', 'TRANSPORT-AND-CITY-DETAIL.md', 'SEO.md', 'LICENSE', '.gitignore', 'start.py', 'start.command',
          'start.sh', 'start.bat', 'requirements.txt', 'requirements-desktop.txt', 'requirements.lock.txt', 'package.json',
          'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.json', 'vite.config.ts', 'index.html']
 DIRECTORIES = ['backend', 'src', 'public', 'tests', 'desktop', 'scripts', '.github']

@@ -15,10 +15,13 @@ export type MapTile = { id: string; name: string; bounds: Bounds; markers: Locat
 export type Settings = {
   project_type?: "single" | "modular" | "jigsaw";
   map_format: "artwork" | "mini_tiles" | "hexagons" | "jigsaw";
+  artwork_rotation?: number;
+  artwork_shape?: import("./artworkShapes").ArtworkShape; artwork_letter?: string;
   project_id?: string; project_name?: string;
   wall_mode?: "legacy" | "continuous" | "places"; wall_positions?: [number,number][]; wall_scale?: number | null; elevation_reference?: number | null;
   tile_size: number; tile_gap: number; collection_columns: number; collection_rows: number;
   map_tiles: MapTile[]; active_tile: number;
+  hang_mode?: "none" | "keyholes" | "pucks" | "magnet_pucks";
   mount_mode: "seat" | "magnets"; magnet_diameter: number; magnet_depth: number; magnet_clearance: number;
   puzzle_style?: "classic" | "rounded"; puzzle_seed?: number;
   puzzle_columns: number; puzzle_rows: number; puzzle_clearance: number; puzzle_relief: number;
@@ -29,6 +32,7 @@ export type Settings = {
   bounds: Bounds;
   width: number;
   height: number;
+  printer_model: string;
   printer_width: number;
   printer_height: number;
   printer_z: number;
@@ -111,6 +115,9 @@ export type Settings = {
   marker_lon: number;
   marker_lat: number;
   front_caption: boolean;
+  caption_text?: string; caption_position?: "bottom" | "top"; caption_style?: "raised" | "engraved"; caption_font?: "sans" | "serif"; caption_align?: "left" | "centre" | "right"; caption_size?: number;
+  plaque?: boolean; plaque_title?: string; plaque_subtitle?: string; plaque_detail?: string; plaque_coordinates?: boolean; plaque_capitals?: boolean;
+  plaque_shape?: "rounded" | "rectangle" | "oval" | "ticket"; plaque_style?: "raised" | "engraved"; plaque_font?: "sans" | "serif"; plaque_border?: boolean; plaque_width?: number;
   nozzle: number;
 };
 export type Part = {
@@ -133,8 +140,9 @@ export type MulticolourTile = {
   part_id: string; file: string;
   materials: (PrintMaterial & { file: string; volume_mm3: number })[];
 };
+export type BambuProfile = { printer: string | null; process: string | null; filament: string | null; layer_height: number };
 export type Model = {
-  bambu?: { files: string[]; plate_count: number; piece_count: number };
+  bambu?: { files: string[]; plate_count: number; piece_count: number; nozzle?: number; profile?: BambuProfile };
   name: string;
   settings: Settings;
   layout: { columns: number; rows: number };
@@ -150,6 +158,7 @@ export type Model = {
     joints: unknown[];
     grid_spacing_mm: number[];
     geometry_revision?: string;
+    mounting?: { mode: NonNullable<Settings["hang_mode"]>; screw: string; pucks?: number; pitch_mm?: number; magnets?: number; keyholes_mm?: number[][]; screw_spacing_mm?: number } | null;
     frame_fit?: {
       lip_width_mm: number;
       lip_height_mm: number;

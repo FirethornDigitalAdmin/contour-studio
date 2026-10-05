@@ -93,7 +93,8 @@ class Geography:
         self.x1 = math.radians(self.east)*6378137
         self.y0 = self.latitude_y(b.south)
         self.y1 = self.latitude_y(b.north)
-        self.inset = settings.frame_width if settings.frame_mode != 'none' else 0
+        from .artwork_shapes import uses_shape
+        self.inset = 0 if uses_shape(settings) else (settings.frame_width if settings.frame_mode != 'none' else 0)
         self.map_width = settings.width-2*self.inset
         self.map_height = settings.height-2*self.inset
         factor = math.cos(math.radians((b.north+b.south)/2))

@@ -13,7 +13,99 @@ import trimesh
 
 from .export import _write_3mf, _model_start, _xml_start, _mesh_xml_chunks
 
-REVISION = 4
+REVISION = 5
+
+
+PRESET_META = {'type', 'name', 'inherits', 'from', 'setting_id', 'instantiation', 'description', 'include',
+               'compatible_printers', 'compatible_printers_condition', 'compatible_prints', 'compatible_prints_condition'}
+
+
+def studio_system_dir():
+    """Bambu Studio's installed vendor presets, when it has been run on this computer."""
+    override = os.environ.get('CONTOUR_BAMBU_PRESETS')
+    if override:
+        candidates = [Path(override)]
+    elif sys.platform == 'darwin':
+        candidates = [Path.home() / 'Library/Application Support/BambuStudio/system/BBL']
+    elif sys.platform == 'win32':
+        candidates = [Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming')) / 'BambuStudio/system/BBL']
+    else:
+        candidates = [Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'BambuStudio/system/BBL']
+    return next((p for p in candidates if (p / 'machine').is_dir() and (p / 'process').is_dir()), None)
+
+
+def resolve_preset(root, kind, name, depth=0):
+    """Flatten one preset through its parents and G-code template includes."""
+    path = (root / kind / f'{name}.json').resolve()
+    if depth > 12 or not path.is_relative_to(root.resolve()) or not path.is_file():
+        raise FileNotFoundError(name)
+    data = json.loads(path.read_text(encoding='utf-8'))
+    merged = {}
+    if data.get('inherits'):
+        merged.update(resolve_preset(root, kind, data['inherits'], depth + 1))
+    for included in data.get('include') or []:
+        merged.update(resolve_preset(root, kind, included, depth + 1))
+    merged.update(data)
+    return merged
+
+
+def studio_profile(settings, filaments, root=None):
+    """The user's real Bambu printer, process and PLA presets, or None.
+
+    A project written for an unknown custom machine cannot be sent to a Bambu
+    printer and slices with the wrong nozzle. Dual-nozzle machines need
+    per-nozzle filament maps and keep the generic profile.
+    """
+    model = (settings.get('printer_model') or '').strip()
+    root = root or studio_system_dir()
+    if not model.startswith('Bambu Lab') or root is None:
+        return None
+    machine_name = f'{model} {settings.get("nozzle", 0.4):g} nozzle'
+    try:
+        machine = resolve_preset(root, 'machine', machine_name)
+        if len(machine.get('nozzle_diameter', [])) != 1:
+            return None
+        process_name = machine['default_print_profile']
+        process = resolve_preset(root, 'process', process_name)
+        filament_name = next((path.stem for path in sorted((root / 'filament').glob('Generic PLA*.json'))
+                              if (path.stem == 'Generic PLA' or path.stem.startswith('Generic PLA @')) and
+                              machine_name in json.loads(path.read_text(encoding='utf-8')).get('compatible_printers', [])),
+                             machine['default_filament_profile'][0])
+        filament = resolve_preset(root, 'filament', filament_name)
+    except (OSError, KeyError, IndexError, ValueError, TypeError):
+        return None
+    values = {}
+    for preset in (machine, process):
+        values.update({k: v for k, v in preset.items() if k not in PRESET_META})
+    for key, value in filament.items():
+        if key not in PRESET_META:
+            values[key] = value[:1] * filaments if isinstance(value, list) and value else value
+    try:
+        values['curr_bed_type'] = json.loads((root / 'machine' / f'{model}.json').read_text(encoding='utf-8'))['default_bed_type']
+    except (OSError, KeyError, ValueError):
+        pass
+    values.update(printer_settings_id=machine_name, print_settings_id=process_name,
+                  filament_settings_id=[filament_name] * filaments)
+    return {'values': values, 'printer': machine_name, 'process': process_name, 'filament': filament_name,
+            'layer_height': float(process.get('layer_height', 0.2))}
+
+
+def generic_profile(settings):
+    """Unknown printers still slice with the nozzle the artwork was designed for."""
+    nozzle = float(settings.get('nozzle', 0.4))
+    defaults = json.loads(Path(__file__).with_name('bambu-defaults.json').read_text(encoding='utf-8'))
+    layer = round(min(0.28, nozzle / 2), 2)
+    values = {'nozzle_diameter': [f'{nozzle:g}'], 'printer_variant': f'{nozzle:g}', 'layer_height': f'{layer:g}',
+              'initial_layer_print_height': f'{layer:g}', 'max_layer_height': [f'{round(nozzle * .7, 2):g}']}
+    for key, value in defaults.items():
+        if key.endswith('line_width') and isinstance(value, str):
+            try:
+                width = float(value)
+            except ValueError:
+                continue
+            if width > 0:
+                values[key] = f'{round(width * nozzle / .4, 2):g}'
+    return values, layer
 
 
 def _source(root, relative):
@@ -107,10 +199,11 @@ def prepare_project(root, info):
     files = []
     for start in range(0, len(plates), 36):
         file = f'Bambu/Print-plates-{start // 36 + 1}.3mf'
-        _export(root, info, plates[start:start + 36], directory / Path(file).name, start)
+        profile = _export(root, info, plates[start:start + 36], directory / Path(file).name, start)
         files.append(file)
     manifest = {'revision': REVISION, 'files': files, 'plate_count': len(plates),
-                'piece_count': sum(len(p['items']) for p in plates)}
+                'piece_count': sum(len(p['items']) for p in plates), 'profile': profile,
+                'nozzle': info['settings'].get('nozzle', 0.4)}
     (directory / 'plates.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     return manifest
 
@@ -175,19 +268,24 @@ def _export(root, info, plates, target, offset):
             yield f'<item objectid="{ident}" transform="{c} {sn} 0 {-sn} {c} 0 0 0 1 {x:.6f} {y:.6f} 0"/>'.encode()
         yield b'</build></model>'
 
-    settings = {'printer_technology': 'FFF', 'printer_settings_id': 'Contour Studio custom bed',
-                'printer_model': 'Custom', 'printer_variant': '0.4', 'nozzle_diameter': ['0.4'],
-                'printable_area': ['0x0', f'{s["printer_width"]}x0', f'{s["printer_width"]}x{s["printer_height"]}', f'0x{s["printer_height"]}'],
-                'printable_height': str(s['printer_z']), 'bed_exclude_area': [],
-                'print_settings_id': 'Contour Studio 0.20mm starting point', 'layer_height': '0.2',
-                'filament_settings_id': ['Generic PLA'] * len(colours), 'filament_type': ['PLA'] * len(colours),
-                'filament_colour': [colours[i] for i in sorted(colours)], 'enable_prime_tower': '1' if len(colours) > 1 else '0'}
     defaults = json.loads(Path(__file__).with_name('bambu-defaults.json').read_text(encoding='utf-8'))
+    profile = studio_profile(s, len(colours))
+    if profile:
+        defaults.update(profile['values'])
+        layer = profile['layer_height']
+    else:
+        generic, layer = generic_profile(s)
+        defaults.update({'printer_technology': 'FFF', 'printer_settings_id': 'Contour Studio custom bed',
+                         'printer_model': 'Custom',
+                         'printable_area': ['0x0', f'{s["printer_width"]}x0', f'{s["printer_width"]}x{s["printer_height"]}', f'0x{s["printer_height"]}'],
+                         'printable_height': str(s['printer_z']), 'bed_exclude_area': [],
+                         'print_settings_id': f'Contour Studio {layer:.2f}mm starting point',
+                         'filament_settings_id': ['Generic PLA'] * len(colours), 'filament_type': ['PLA'] * len(colours), **generic})
+    defaults.update({'filament_colour': [colours[i] for i in sorted(colours)], 'enable_prime_tower': '1' if len(colours) > 1 else '0'})
     for key in ('inherits_group', 'different_settings_to_system'):
         defaults[key] = [''] * (len(colours) + 2)
     defaults['flush_volumes_vector'] = ['140'] * (len(colours) * 2)
     defaults['flush_volumes_matrix'] = ['0' if i == j else '280' for i in range(len(colours)) for j in range(len(colours))]
-    defaults.update(settings)
     settings = defaults
     temporary = target.with_suffix('.tmp')
     try:
@@ -196,6 +294,8 @@ def _export(root, info, plates, target, offset):
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)
+    return {'printer': profile['printer'], 'process': profile['process'], 'filament': profile['filament'], 'layer_height': layer} if profile else \
+        {'printer': None, 'process': None, 'filament': None, 'layer_height': layer}
 
 
 def launch_projects(paths):

@@ -11,6 +11,8 @@ from desktop.version import BUNDLE_VERSION
 ui = Path(os.environ.get('CONTOUR_UI_DIR', root / 'dist')).resolve()
 assets = [(str(ui), 'dist'), (str(root / 'LICENSE'), '.'), (str(write_notices(root)), '.')]
 assets += [(str(root / 'backend' / 'bambu-defaults.json'), 'backend')]
+assets += [(str(root / 'backend' / 'artwork-shapes.json'), 'backend')]
+assets += [(str(root / 'backend' / 'artwork-ratios.json'), 'backend')]
 binaries = []
 hidden = ['backend.app', 'backend.export', 'backend.worker', 'backend.buildings', 'uvicorn.logging', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan.on']
 for package in ('webview', 'overturemaps', 'pyarrow', 'manifold3d', 'pyproj'):

@@ -316,3 +316,14 @@ def test_caption_stays_attached_on_narrow_and_rounded_frame_faces(tmp_path,mode,
                joints=False,labels=False,roads='none',water=False,buildings=False,front_caption=True,**profile)
     info=build_project(s,tmp_path,quiet,lambda xs,ys,geo:(np.zeros((len(ys),len(xs))),[]))
     assert all(part['watertight'] and part['components']==1 for part in info['parts'])
+
+
+def test_seam_slivers_are_dropped_but_real_floating_parts_remain():
+    from backend.geometry import drop_cut_crumbs
+    tile=prism(box(0,0,50,50),5)
+    sliver=prism(box(49.91,10,50,10.9),.4,8)
+    island=prism(box(10,10,14,14),2,8)
+    cleaned,dropped=drop_cut_crumbs(tile+sliver+island,.4)
+    assert dropped==1
+    assert len(cleaned.decompose())==2
+    assert cleaned.volume()==pytest.approx(tile.volume()+island.volume())

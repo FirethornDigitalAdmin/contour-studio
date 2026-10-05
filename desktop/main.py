@@ -1,4 +1,6 @@
 """Run the existing local app in a persistent native macOS/Windows window."""
+import errno
+from contextlib import contextmanager
 import logging
 from html import escape
 import multiprocessing
@@ -53,21 +55,108 @@ def window_options():
     return options
 
 
+def bind_local_connection(data_root):
+    """Keep the browser origin stable, including after a Windows port reservation."""
+    preference = data_root / 'desktop-port.txt'
+    override = os.environ.get('CONTOUR_DESKTOP_PORT')
+    port = 8767
+    if override:
+        port = int(override)
+    else:
+        try:
+            saved = int(preference.read_text(encoding='ascii').strip())
+            if 1024 <= saved <= 65535:
+                port = saved
+        except (OSError, ValueError):
+            pass
+    connection = socket.socket()
+    try:
+        connection.bind(('127.0.0.1', port))
+    except OSError as error:
+        logging.exception('Cannot bind local connection 127.0.0.1:%s (errno=%s, winerror=%s)',
+                          port, error.errno, getattr(error, 'winerror', None))
+        connection.close()
+        # Binding to zero asks the operating system to select and reserve a
+        # free port atomically, avoiding a scan/check-then-bind race.
+        if not (error.errno in (errno.EACCES, errno.EADDRINUSE)
+                or getattr(error, 'winerror', None) in (10013, 10048)):
+            raise
+        connection = socket.socket()
+        try:
+            connection.bind(('127.0.0.1', 0))
+            port = connection.getsockname()[1]
+            preference.write_text(str(port), encoding='ascii')
+        except Exception:
+            connection.close()
+            raise
+        logging.info('Using available local connection 127.0.0.1:%s; saved for future launches', port)
+    return connection, port
+
+
+class AlreadyRunningError(Exception):
+    pass
+
+
+@contextmanager
+def instance_lock(data_root):
+    """An OS-owned lock distinguishes our app from an unrelated busy port."""
+    handle = (data_root / 'desktop-instance.lock').open('a+b')
+    acquired = False
+    try:
+        if os.name == 'nt':
+            import msvcrt
+            if handle.seek(0, os.SEEK_END) == 0:
+                handle.write(b'0')
+                handle.flush()
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as error:
+                if error.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise AlreadyRunningError from error
+                raise
+        else:
+            import fcntl
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise AlreadyRunningError from error
+        acquired = True
+        yield
+    finally:
+        try:
+            if acquired:
+                if os.name == 'nt':
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
 def run_application(data_root):
+    try:
+        with instance_lock(data_root):
+            _run_application(data_root)
+    except AlreadyRunningError:
+        native_error('Contour Studio is already running. Switch to its open window to continue.')
+
+
+def _run_application(data_root):
     import uvicorn
     import webview
     from backend.app import app
 
     browser_options = {'gui': 'edgechromium'} if sys.platform == 'win32' else {}
     # A stable origin preserves browser drafts between launches.
-    port = int(os.environ.get('CONTOUR_DESKTOP_PORT', '8767'))
-    server_socket = socket.socket()
     try:
-        server_socket.bind(('127.0.0.1', port))
+        server_socket, port = bind_local_connection(data_root)
     except OSError:
-        server_socket.close()
+        logging.exception('Automatic local connection recovery failed')
+        message = 'The system could not open the app’s local connection. The diagnostic log below contains the connection error.'
         webview.create_window('Contour Studio', html=startup_page('The app could not open.',
-            'Another copy of Contour Studio, or another app, is using its local connection. Close the other copy, then try again.',
+            message,
             data_root / 'desktop.log'), width=640, height=440, background_color='#fcfbf7')
         webview.start(**browser_options)
         return
